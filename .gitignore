@@ -1,0 +1,6 @@
+results/
+fixture/.venv/
+fixture/**/__pycache__/
+fixture/**/*.pyc
+.pytest_cache/
+*.log

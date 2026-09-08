@@ -1,0 +1,128 @@
+# llama-swap config — runs inside WSL2 (Ubuntu-24.04), serves OpenAI-compatible API
+# on 127.0.0.1:8080. WSL2 localhost forwarding makes this reachable from Windows.
+#
+# Slots (rebuilt 2026-09-04 after the intelligence-first protocol pass):
+#   fast         - Qwen3.5-9B Q6_K, fully on GPU. Default driver for routine work.
+#   deep         - Qwen3.6-35B-A3B APEX-Compact. PROMOTED primary: ties Nemotron's
+#                  perfect real-agent-loop correctness (15/15) while running 34%
+#                  faster (42.9s vs 65.5s/success) and with a healthier reasoning
+#                  ratio (1.32:1 vs 2.23:1). See STACK.md 2026-09-04.
+#   deep-alt     - Nemotron 3.5 Lightning 30B-A3B. Demoted to temporary control/
+#                  fallback pending an expanded tournament against `deep`. Delete
+#                  outright if APEX wins that too. The three reasoning-budget/lite
+#                  variants that existed when Nemotron was primary were dropped as
+#                  part of shrinking the stack — they were never anything but
+#                  Nemotron with different flags, and Nemotron itself is temporary now.
+#   deep-uncensored - Qwen3.8-27B OBLITERATED IQ4_XS. Refusal behaviour, not speed.
+#                  Has NEVER been run through the full real-agent-loop protocol —
+#                  this is the next validation, before any new model is downloaded.
+#
+# No vision-capable slot as of 2026-09-04. Candidate: Qwen3.6-35B-A3B APEX's own
+# mmproj, if one genuinely exists and works — unverified, do not assume it does.
+# Ornith-1.5-9B (+ mmproj) stays on disk until that is confirmed one way or the other.
+#
+# Only one model is resident at a time (12 GB VRAM). ttl unloads an idle model.
+
+healthCheckTimeout: 900
+logLevel: info
+startPort: 9100
+
+models:
+  fast:
+    name: "Qwen3.5 9B (fast)"
+    ttl: 900
+    cmd: |
+      /home/YOU/src/llamacpp/build/bin/llama-server
+      --host 127.0.0.1
+      --port ${PORT}
+      --model /home/YOU/.local/share/sovereign-ai/models/qwen35-9b/gguf/qwen35-9b-Q6_K.gguf
+      -ngl 99
+      -c 65536
+      --flash-attn on
+      -ctk q8_0
+      -ctv q8_0
+      --jinja
+      --reasoning-format deepseek
+      --temp 0.6
+      --top-p 0.95
+      --top-k 20
+      --min-p 0.0
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+
+  # Promoted primary, 2026-09-04. Settled config: --n-cpu-moe 20 gives 9,848 MiB
+  # peak VRAM (clean, ±0.13 tok/s in isolation) — the fastest clean fit found under
+  # the 11,000 MiB ceiling. Do not re-tune without a reason; this was swept 18-32.
+  deep:
+    name: "Qwen3.6-35B-A3B APEX-Compact (deep)"
+    ttl: 900
+    cmd: |
+      /home/YOU/src/llamacpp/build/bin/llama-server
+      --host 127.0.0.1
+      --port ${PORT}
+      --model /path/to/AI/ModelStore/gguf/qwen3.6-35b-a3b-apex/Qwen3.6-35B-A3B-APEX-Compact.gguf
+      -ngl 99
+      --n-cpu-moe 20
+      --ctx-size 32768
+      --flash-attn on
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --no-mmap
+      --jinja
+      --reasoning-format deepseek
+
+# deep-alt REMOVED 2026-09-05: Nemotron lost the expanded 24-trajectory tournament
+# to APEX (6/8 all-three vs 7/8, 19/24 vs 23/24, 168.27s vs 52.29s/success) after
+# already losing the original 15-trajectory protocol. Two losses per the user's
+# own pre-declared rule ("if APEX also wins that too: delete the 17.6 GiB Nemotron
+# file"). GGUF deleted. See STACK.md 2026-09-05.
+
+# deep-uncensored REMOVED 2026-09-04: Qwen3.8-27B OBLITERATED IQ4_XS failed the
+# full real-agent-loop protocol decisively — 0/5 all-three, 7/15 individual,
+# against a pre-declared gate of <=13/15 = delete. Complete non-action on every
+# failed run (e.g. `auth`: 0/3, files left byte-identical, one tool call then
+# nothing). The uncensored role currently has no model. See STACK.md.
+
+
+
+
+
+  # PROMOTED 2026-09-05 (evaluated), permanent slot. Tiel-Coder-35B-A3B.
+  # Only model to complete the expanded 8-task fixture with zero failures, and it did so
+  # TWICE: 8/8 all-three and 24/24 individual on two independent 24-trajectory passes,
+  # wall-clock within 1.8% between them. Tool errors 55 then 40 (project best; APEX's best
+  # was 55) and a 0.86:1 reasoning ratio, the only model measured here that produced more
+  # answer than reasoning. Costs 14% more wall-clock than APEX (59.4-60.5s vs 52.29s).
+  #
+  # Kept ALONGSIDE `deep` (APEX) rather than replacing it: both passes ran the same 8 tasks,
+  # so what is proven is reproducibility, not breadth. Compare them on real work.
+  #
+  # --n-cpu-moe 18 = 10,378 MiB, fastest clean fit (16 overshoots at 11,044).
+  # qwen35moe architecture, same as APEX, so the mainline validated binary serves it.
+  # MTP nextn layers are embedded in this GGUF but deliberately NOT enabled: STACK.md
+  # records MTP speculative decoding as do-not-retry on this machine.
+  deep-tiel:
+    name: "Tiel-Coder-35B-A3B MTP UD-Q3_K_XL (deep-tiel)"
+    ttl: 900
+    cmd: |
+      /home/YOU/src/llamacpp/build/bin/llama-server
+      --host 127.0.0.1
+      --port ${PORT}
+      --model /path/to/AI/ModelStore/gguf/tiel-coder-35b-a3b/Tiel-Coder-35B-A3B-MTP-UD-Q3_K_XL.gguf
+      -ngl 99
+      --n-cpu-moe 18
+      --ctx-size 32768
+      --flash-attn on
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --no-mmap
+      --jinja
+      --reasoning-format deepseek
+
+# K2-Horizon REMOVED 2026-09-05: no variant earned a slot. Q8_0 reached 7/8 - 23/24 but a
+# one-trajectory gain over `fast` did not justify depending on an unmerged fork; Q6_K fell
+# to 6/8 - 22/24 while running 36% slower than `fast`; MoVA-36B took twice APEX's
+# wall-clock for worse correctness. Tool errors (215 Q8_0, 175 Q6_K, vs `fast`'s 90) proved
+# inherent to the model rather than the quantization. Fork build deleted.
+
+
