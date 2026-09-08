@@ -65,6 +65,60 @@ tagged with which one produced it.
 - **[`llama-swap.yaml`](./llama-swap.yaml)** — the live model-routing config, annotated
   with why each setting exists.
 
+## Setting up the stack
+
+Nothing below is required to *read* `STACK.md`/`MODELS.md`, only to run the protocol
+yourself. Versions pinned here are what this project actually ran on 2026-09; newer
+releases of each tool should work fine, but if something behaves differently, this is the
+baseline to diff against.
+
+**1. llama.cpp** (b10726, commit `85c5522`) — built from source for CUDA/Blackwell
+(`sm_120`); a prebuilt release binary works too if it matches your GPU's compute
+capability. From a [clone](https://github.com/ggml-org/llama.cpp):
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=<your compute capability, e.g. 120 for Blackwell> \
+  -DGGML_CUDA_FA=ON -DGGML_CUDA_GRAPHS=ON -DGGML_CUDA_NCCL=ON \
+  -DGGML_CUDA_COMPRESSION_MODE=size -DGGML_NATIVE=ON -DLLAMA_CURL=ON
+cmake --build build --config Release -j $(nproc) --target llama-server llama-bench
+```
+
+A model whose architecture postdates your build (this repo hit that twice — see
+`STACK.md`'s K2-Horizon and Spark-X2.5 entries) needs a newer checkout. Rebuild into a
+*separate* directory (`build-new`, say) rather than overwriting a binary you've already
+validated — nothing here assumes the newest build is the best one.
+
+**2. [llama-swap](https://github.com/mostlygeek/llama-swap)** (v252 here) — a single Go
+binary. Download a release, point it at [`llama-swap.yaml`](./llama-swap.yaml):
+
+```bash
+llama-swap -config llama-swap.yaml -listen 127.0.0.1:8080 -watch-config
+```
+
+That config is the actual routing table this project ran, annotated with why each
+`--n-cpu-moe` value was chosen — it's a starting point to edit, not a template to copy
+verbatim, since that value doesn't transfer between models or hardware.
+
+**3. [Pi](https://github.com/badlogic/pi-mono)** (0.84.4 here) — the harness the protocol
+drives. Install per its own docs, then register `llama-swap` as an OpenAI-compatible
+provider pointed at `http://127.0.0.1:8080/v1`. Confirm it can see your models:
+
+```bash
+pi --provider llama-swap --model <model-id> --no-session --print "say hi"
+```
+
+Zed + Pi's Agent Client Protocol integration (used for interactive daily driving, not for
+the benchmark protocol itself) is one layer up from this and isn't needed just to run
+`run-h2h-expanded.sh` — Pi's CLI is enough on its own.
+
+**Running on WSL2 from Windows?** This project ran llama.cpp/llama-swap inside WSL2 Ubuntu
+24.04 with mirrored networking, so `127.0.0.1:8080` is reachable identically from both
+sides — no port-forwarding config needed. If you hit `wsl.exe` silently mangling a path
+argument passed through Git Bash, or a shell variable collapsing to empty when nested
+through `bash -c "..."`, those are both real landmines this project hit repeatedly — see
+the "process lesson" entries in `STACK.md` for the exact fix.
+
 ## Reproducing a run
 
 ```bash
@@ -79,9 +133,8 @@ cd fixture && python -m venv .venv && ./.venv/Scripts/pip install pytest && cd .
 ./scripts/reverify-h2h-expanded.sh ./results/h2h-expanded-runs-<your-model-id>
 ```
 
-This assumes [Pi](https://github.com/badlogic/pi-mono) is on `PATH` and configured with a
-`llama-swap` provider (see `llama-swap.yaml` for the reference config). The protocol itself
-is harness-agnostic in spirit — swap the `pi --provider ...` invocation in
+This assumes Pi is on `PATH` and configured with a `llama-swap` provider as above. The
+protocol itself is harness-agnostic in spirit — swap the `pi --provider ...` invocation in
 `run-h2h-expanded.sh` for any CLI-drivable agent harness and the fixture/grading still work.
 
 ## The headline results, if you read nothing else
