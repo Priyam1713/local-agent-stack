@@ -1338,3 +1338,105 @@ ratios, in either direction; APEX went the other way (32:1 isolated, 1.32:1 real
 is a filter for total failure, nothing more.
 
 Test slot removed. GGUF retained pending the user's decision.
+
+## Small/fast candidates batch 1 — 2026-09-08 — all three rejected
+
+Three candidates for `fast`/ultra-fast: `granite-4.2-3b-Q8_0` (3.63 GiB, dense `granite`
+arch), `ai9stars_G9v3-3B-Q8_0` (2.96 GiB, dense `llama` arch), `Spark-X2.5-1.7B-Q8_0`
+(1.70 GiB, `spark2_5` arch).
+
+**Spark-X2.5-1.7B required a mainline rebuild, not a fork.** `spark2_5` is unsupported by
+our pinned 85c5522 but IS merged into current llama.cpp master (PR #27868, needs b10828+).
+Rebuilt into an isolated `build-spark` (production `build/bin` untouched). Loaded fine,
+9,050 MiB... actually 6,107 MiB, benchmarked fastest of the three (tg128 ~144-160 tok/s) --
+then failed its 5-task screen at 3/5, with `bsearch` and `cycle` both hitting
+`finish=length` with zero content, burning the full 4,096-token budget. Same signature as
+APEX I-Mini. Rejected without running the full protocol, per that established bar.
+
+Granite and ai9stars both screened 5/5 and ran the full 8-task protocol against `fast`'s
+6/8 - 22/24 - 48.37s baseline:
+
+| Metric | `fast` | granite | ai9stars |
+|---|---:|---:|---:|
+| All-three | 6/8 | 4/8 | 3/8 |
+| Individual | 22/24 | 17/24 | 17/24 |
+| Wall/success | **48.37s** | 90.46s | 191.35s |
+| Tool errors | **90** | 315 | 284 |
+| 400s timeouts | 0 | 0 | **4** |
+
+**ai9stars is a dramatic screen-lies reversal** -- 5/5 correct on the isolated screen at
+16.5s/answer, then 3/8 with four separate 400-second timeouts under the harder 8-task
+fixture (`alias`, `cache` x1, `pipeline` x1... four total across those tasks). Same failure
+class as gpt-oss's original reversal that established this project's methodology.
+
+Granite's failures were more varied: several `success=1` rows carried massive reasoning
+counts (up to 266,641 chars) alongside zero content, suggesting it sometimes succeeds via
+tool calls alone without narrating -- not itself a problem, but its outright failures
+(`overlay`, `cache`, `dedupe`, `pipeline`) plus 315 tool errors make it a clear reject
+regardless.
+
+**Neither earns a slot.** The `build-spark` rebuild is retained (isolated, production
+binary untouched) since it is needed again for this session's remaining candidates.
+
+## Small/fast candidates batch 2 — 2026-09-08 — one corrupted file, three rejected
+
+Four candidates for `fast`/ultra-fast or `deep`: `Spark-X2.5-4B-Q8_0` (4.07 GiB, `spark2_5`),
+`allenai_tmax-4b-Q8_0` (4.17 GiB, dense `qwen35`), `4b-clawgym` (8.22 GiB, `qwen3`),
+`Ling-3.0-tiny-Q8_0` (7.83 GiB, `bailingmoe3` MoE, 7.9B total / 1.3B active).
+
+**`allenai_tmax-4b-Q8_0.gguf` is corrupted, not architecture-unsupported.** It failed to
+load with `check_tensor_dims: tensor 'blk.32.attn_norm.weight' not found`. Confirmed by
+scanning the actual tensor list: metadata declares 33 layers (`block_count`) but only 32
+(`blk.0`-`blk.31`) exist in the file. Not fixable with flags; the conversion itself is bad.
+Set aside untested; would need a fresh download to evaluate.
+
+**`bailingmoe3` (Ling) support required the same `build-spark` rebuild** used for
+Spark-X2.5 in the prior batch (already in that tree, no extra work). `4b-clawgym` turned
+out to actually be **BF16 despite no quant suffix in its filename** -- 8.22 GiB matches
+2 bytes/param for 4.4B params, confirmed via `llama-bench`'s own type string
+("qwen3 4B BF16"). `clawgym` and `ling` both initially appeared to fail loading; both were
+just slow over `drvfs` without `--no-mmap` and loaded fine once retried with it and more
+patience -- not real failures.
+
+Isolated benchmark (both passes tight unless noted):
+
+| Model | pp512 | tg128 | VRAM |
+|---|---:|---:|---:|
+| Spark-X2.5-4B | ~5,034 | 70.33 | 4,993 MiB |
+| 4b-clawgym (BF16) | ~3,791 | 43.88 | 9,095 MiB |
+| Ling-3.0-tiny (MoE) | ~5,828 | **157.58-157.99** | 8,157 MiB |
+
+Ling's tg128 is the cleanest and fastest raw result of the entire session -- near-zero
+variance across both passes.
+
+5-task screen: Spark-4B 5/5 (2.4:1 ratio, verbose but correct). Ling 5/5 (3.3:1, correctly
+averages even-length median where several other models used the mutating/wrong version).
+**clawgym 4/5** -- on `median` it correctly diagnosed the bug mid-reasoning ("this is a
+common convention... wait, let me reconsider") then talked itself out of fixing it and
+returned the original buggy code unchanged. A reasoning failure, not non-action.
+
+### Expanded protocol: all three lose to `fast`
+
+| Metric | `fast` | Spark-X2.5-4B | 4b-clawgym | Ling-3.0-tiny |
+|---|---:|---:|---:|---:|
+| All-three | 6/8 | 4/8 | 6/8 | 6/8 |
+| Individual | 22/24 | 18/24 | 21/24 | 20/24 |
+| Wall/success | **48.37s** | 173.68s | 87.93s | 67.16s |
+| Tool errors | **90** | 170 | **600** | 190 |
+
+**Spark-X2.5-4B**: clear reject. Burns enormous reasoning on hard tasks (up to 879,802
+chars on one failed `cache` run) and still frequently fails or barely clears the 400s
+timeout (`dedupe` run 3 succeeded at 400.9s with 719,170 reasoning chars).
+
+**4b-clawgym**: matches `fast`'s all-three count but is 82% slower with 6.7x the tool
+errors. `dedupe` run 3 alone had 94 tool calls and 465 errors in one trajectory -- a
+genuine runaway retry loop, not an isolated fluke.
+
+**Ling-3.0-tiny**: despite the best isolated benchmark of the session, failed `cache` 0/3
+outright -- 2/3 complete non-action (file byte-identical to baseline), 1/3 a genuine
+failed attempt. Cannot perform the "extend with a documented decorator pattern" feature
+task at all. This is the clearest reminder yet that isolated throughput predicts nothing
+about real agentic capability, in either direction.
+
+**None promoted.** Test slots removed. All four GGUFs retained in Downloads pending the
+user's disposal decision.

@@ -29,6 +29,11 @@ Every row below is tagged with the fixture that produced it.
 | K2-Horizon-7B Q8_0 | 7/8 | 23/24 | 55.26s | 1.97:1 | 215 | Matched APEX-35B's correctness exactly from a fully GPU-resident 7B — a genuine result. Rejected anyway: against `fast` (the slot it would take), the margin was one trajectory out of 24, bought at 2.4× the tool errors and a permanent fork dependency. |
 | K2-Horizon-7B Q6_K | 6/8 | 22/24 | 65.77s | 1.75:1 | 175 | Tested to see if a lighter quant would cut Q8_0's tool-error rate. It didn't (175 vs `fast`'s 90) — the fumbling is inherent to the model, not the quantization. Also worse than Q8_0 on correctness. |
 | Macaron-V1-Tall i1-IQ4_XS | 5/8 | 20/24 | 67.33s | 1.60:1 | 85 | Loses to both incumbents on correctness *and* wall-clock. Its 5-task screen showed a 24.7:1 reasoning ratio that looked like disaster; the real protocol measured 1.60:1 — screen ratios don't predict protocol ratios in either direction. |
+| 4b-clawgym (actually BF16, mislabeled) | 6/8 | 21/24 | 87.93s | 0.0:1 | **600** | Matches `fast`'s all-three count but is 82% slower with 6.7× the tool errors. One `dedupe` trajectory alone had 94 tool calls and 465 errors — a genuine runaway retry loop. On the 5-task screen it correctly diagnosed a `median` bug mid-reasoning, then talked itself out of fixing it and returned the original buggy code — a reasoning failure, not non-action. 0.0:1 here means no separate reasoning channel exists (same as Qwen3-Coder), not efficiency. |
+| Ling-3.0-tiny Q8_0 (`bailingmoe3`, 7.9B/1.3B active) | 6/8 | 20/24 | 67.16s | 3.73:1 | 190 | Despite the **cleanest isolated benchmark of the entire project** (157.6-158.0 tok/s, near-zero variance), failed `cache` 0/3 outright — 2/3 complete non-action, 1/3 a genuine failed attempt. Cannot perform the "extend with a documented decorator pattern" feature task at all. The sharpest demonstration yet that isolated throughput predicts nothing about real capability, in either direction. |
+| Spark-X2.5-4B Q8_0 | 4/8 | 18/24 | 173.68s | 9.74:1 | 170 | Burns enormous reasoning on hard tasks (up to 879,802 characters on one failed `cache` run) and still frequently times out or barely clears the 400s limit. Required a mainline rebuild for its `spark2_5` architecture (merged upstream past this project's pinned commit — a real rebuild, not a third-party fork). |
+| granite-4.2-3b Q8_0 | 4/8 | 17/24 | 90.46s | 16.35:1 | 315 | Dense IBM Granite architecture. Several `success=1` rows carried massive reasoning (up to 266,641 chars) alongside zero narrated content — succeeding via tool calls alone isn't itself a problem, but outright failures on `overlay`/`cache`/`dedupe`/`pipeline` plus 315 tool errors make it a clear reject. |
+| ai9stars_G9v3-3B Q8_0 | 3/8 | 17/24 | 191.35s | 9.78:1 | 284 | **Screen-lies reversal**, same class as gpt-oss's original one: 5/5 on the isolated screen at 16.5s/answer, then 3/8 with four separate 400-second timeouts across `alias`/`cache`/`pipeline` under the harder 8-task fixture. |
 
 ## Rejected on the 5-task protocol (not comparable to the section above)
 
@@ -44,6 +49,8 @@ Every row below is tagged with the fixture that produced it.
 | Model | Size | How far it got | Why rejected |
 |---|---:|---|---|
 | Qwen3.6-35B-A3B APEX I-Mini | 13.32 GiB | Screen: 3/5 | Two answers came back completely empty — full 4,096-token budget spent on reasoning, zero output. 93.1:1 ratio, the worst measured. |
+| Spark-X2.5-1.7B Q8_0 | 1.70 GiB | Screen: 3/5 | `spark2_5` architecture needed a mainline rebuild (merged upstream, not a fork). Fastest benchmark of its batch (tg128 144-160 tok/s) but `bsearch` and `cycle` both hit `finish=length` with zero content, burning the full token budget — same signature as APEX I-Mini. Rejected before the full protocol, per that established bar. |
+| allenai_tmax-4b Q8_0 | 4.17 GiB | Cannot load — **corrupted file** | Metadata declares 33 layers (`block_count`) but only 32 (`blk.0`-`blk.31`) exist in the actual tensor data, confirmed by scanning the tensor list directly. Not an architecture problem and not fixable with flags — the conversion itself is bad. Untested; would need a fresh download. |
 | gemma-4-31B-it UD-IQ3_XXS | 11.01 GiB | 5-task: 5/5, 15/15 | Matched incumbents on correctness at 316.0s/success — 4.8× slower, no compensating quality edge. |
 | gemma-4-26B-A4B-it UD-IQ3_S | 10.50 GiB | 5-task: 4/5, 14/15 | Best raw speed and best isolated correctness of its sweep, then reasoning overhead exploded to 29.1:1 under real load, ~2× the incumbent wall-clock. |
 | gemma-4-12b-it UD-Q6_K_XL | 9.94 GiB | 5-task: 4/5, 13/15 | Genuine non-termination: 3 of 15 runs hit a hard 400s timeout after generating 400,000+ characters, cut off mid-tool-call. |
@@ -70,5 +77,5 @@ Every row below is tagged with the fixture that produced it.
 - **`--n-cpu-moe`** (llama.cpp): offloads routed MoE experts to system RAM. Only applies to
   genuine MoE architectures, not dense models. The right value is architecture- and
   quant-specific and does not transfer between models — it must be swept per model.
-- **240 trajectories** run through the 8-task protocol across 10 protocol runs, as of the
+- **360 trajectories** run through the 8-task protocol across 15 protocol runs, as of the
   last update to this file.
