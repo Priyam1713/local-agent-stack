@@ -1,4 +1,4 @@
-results/
+/results/
 fixture/.venv/
 fixture/**/__pycache__/
 fixture/**/*.pyc
