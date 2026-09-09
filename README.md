@@ -23,6 +23,11 @@ a model that looked *risky* in isolation turned out to be the best challenger te
 never trust a single-prompt screen as a verdict — only a full multi-turn agent-loop protocol,
 against a fixture with real bugs and a real test suite, is trustworthy.
 
+The same rule turned out to apply to *harnesses*, and cost two wrong verdicts before it was
+learned there too: one harness was written off from its documentation without ever being
+installed, and another was declared incompatible with a model slot on the strength of a
+default configuration. Both went on to score perfectly. See [`HARNESSES.md`](./HARNESSES.md).
+
 ## The protocol
 
 Every serious candidate runs through [`scripts/run-h2h-expanded.sh`](./scripts/run-h2h-expanded.sh):
@@ -53,6 +58,10 @@ tagged with which one produced it.
 
 ## What's in here
 
+- **[`HARNESSES.md`](./HARNESSES.md)** — the other half of the question: with the model held
+  fixed, how much does the *harness* driving it matter? Seven harnesses × two model slots ×
+  24 trajectories. Short answer: almost nothing for correctness, a great deal for speed —
+  and the ranking inverts between slots, so there is no single harness to standardise on.
 - **[`STACK.md`](./STACK.md)** — the full, dated decision log. Every model tested, every
   measurement, every rejection reason, in the order it happened. This is the primary
   document; everything else supports it.
@@ -64,6 +73,12 @@ tagged with which one produced it.
   these three are what actually reproduce the methodology.)
 - **[`llama-swap.yaml`](./llama-swap.yaml)** — the live model-routing config, annotated
   with why each setting exists.
+- **[`harnesses/`](./harnesses)** — the multi-harness setup: a machine-readable
+  [`registry.json`](./harnesses/registry.json) of every wired harness (binary, config path,
+  headless invocation, verification date) and a [`README`](./harnesses/README.md) of the
+  traps each one hides.
+- **[`harnesses/results/`](./harnesses/results)** — raw per-trajectory results for all
+  336 harness trajectories, one TSV per harness/slot cell.
 
 ## Setting up the stack
 

@@ -1,0 +1,159 @@
+{
+  "_comment": "Canonical registry of harnesses wired into this stack. Machine-readable companion to README.md. Every harness here has been verified end-to-end by verify-harnesses.sh, not merely installed.",
+  "_lastVerified": "2026-09-09",
+  "backend": {
+    "service": "llama-swap",
+    "endpoint": "http://127.0.0.1:8080/v1",
+    "auth": "none",
+    "sourceOfTruth": "D:\\LocalAI\\config\\llama-swap.yaml",
+    "note": "Slot roster lives ONLY here. Every harness config is derived from it by sync-harnesses.sh. Never hand-edit a harness's model list. Path moved from E:\\AI\\config during the 2026-09-09 D-drive consolidation."
+  },
+  "slots": [
+    "fast",
+    "deep",
+    "deep-tiel"
+  ],
+  "harnesses": [
+    {
+      "id": "pi",
+      "name": "Pi",
+      "runsOn": "windows",
+      "binary": "C:\\Users\\priya\\AppData\\Roaming\\npm\\pi",
+      "configPath": "C:\\Users\\priya\\.pi\\agent\\models.json",
+      "acp": {
+        "registeredInZed": true,
+        "command": "C:\\Program Files\\nodejs\\node.exe",
+        "args": [
+          "C:\\Users\\priya\\AppData\\Roaming\\npm\\node_modules\\pi-acp\\dist\\index.js"
+        ]
+      },
+      "headless": "pi --provider llama-swap --model <slot> --no-session --print \"<prompt>\"",
+      "jsonMode": "--mode json",
+      "role": "Default daily driver. The harness the 8-task evaluation protocol is built around; all 360 recorded trajectories ran through it.",
+      "verified": "2026-09-08 PASS"
+    },
+    {
+      "id": "prime-agent",
+      "name": "Prime Agent",
+      "runsOn": "wsl",
+      "binary": "/home/priya/.nvm/versions/node/v24.18.0/bin/prime-agent",
+      "version": "0.9.1",
+      "upstream": "github.com/PrimeIntellect-ai/prime-agent (packages/coding-agent)",
+      "configPath": "/home/priya/.prime/agent/models.json",
+      "acp": {
+        "registeredInZed": true,
+        "command": "wsl.exe",
+        "args": [
+          "-d",
+          "Ubuntu-24.04",
+          "--",
+          "/home/priya/.nvm/versions/node/v24.18.0/bin/prime-agent",
+          "--mode",
+          "acp"
+        ]
+      },
+      "headless": "prime-agent --provider llama-swap --model <slot> --print \"<prompt>\"",
+      "jsonMode": "--mode json",
+      "role": "Capability-amplification candidate. Persistent IPython REPL, recursive subagents, and a Continual Harness that carries memory/skills across trajectories. The ARC-AGI-3 95.5% harness.",
+      "notes": "Was already installed before this integration. Its config had drifted badly -- it still described `deep` as Nemotron (deleted days earlier) and listed a `deep-lite` slot that no longer existed. sync-harnesses.sh now regenerates it.",
+      "verified": "2026-09-08 PASS"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "runsOn": "windows",
+      "binary": "C:\\Users\\priya\\AppData\\Roaming\\npm\\opencode",
+      "version": "1.18.29",
+      "configPath": "C:\\Users\\priya\\.config\\opencode\\opencode.json",
+      "acp": {
+        "registeredInZed": true,
+        "command": "C:\\Users\\priya\\AppData\\Roaming\\npm\\opencode.cmd",
+        "args": [
+          "acp"
+        ]
+      },
+      "headless": "opencode run --model llama-swap/<slot> \"<prompt>\"",
+      "jsonMode": "--format json",
+      "role": "Multi-provider alternative with persistent client/server sessions (SQLite-backed) that survive terminal disconnects.",
+      "notes": "The Desktop app (@opencode-aidesktop) is a SEPARATE Electron GUI that ships no CLI. ACP and headless use both require this npm CLI package.",
+      "verified": "2026-09-08 PASS"
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI Codex CLI",
+      "runsOn": "wsl",
+      "binary": "/home/priya/.nvm/versions/node/v24.18.0/bin/codex",
+      "configPath": "/home/priya/.codex/config.toml",
+      "headless": "codex exec --skip-git-repo-check -s workspace-write \"<prompt>\"",
+      "modelSelection": "config file only -- no --model flag; set by set-harness-model.sh",
+      "slots": [
+        "deep",
+        "deep-tiel"
+      ],
+      "role": "Reference point: a mainstream commercial harness pointed at local weights, to show how much of a harness's behaviour is the harness rather than the model.",
+      "notes": "Four blockers had to be cleared. (1) wire_api=\"chat\" was removed in 0.153, so the provider must declare \"responses\". (2) The Windows build refuses to run -- pwsh.exe resolves to the WindowsApps alias and is blocked by execution policy -- so it runs in WSL. (3) The `fast` slot is unusable: Qwen3.5's chat template rejects Codex's `instructions` field with \"System message must be at the beginning\", which the client surfaces as a retry storm and a misleading \"experiencing high demand\" message. Diagnosed by proxying the wire on port 8099. Re-verified still failing 2026-09-09.",
+      "verified": "2026-09-09 PASS (deep-tiel), FAIL (fast, upstream template constraint)"
+    },
+    {
+      "id": "dsh",
+      "name": "DeepSeek Harness",
+      "runsOn": "wsl",
+      "binary": "/home/priya/.nvm/versions/node/v24.18.0/bin/dsh",
+      "version": "0.1.2-rc.1 (npm @deepseek-ai/dsh)",
+      "configPath": "/home/priya/.dsh/settings.yaml",
+      "headless": "dsh --profile headless \"<prompt>\"",
+      "modelSelection": "config file only -- no --model flag; set by set-harness-model.sh",
+      "slots": [
+        "fast",
+        "deep",
+        "deep-tiel"
+      ],
+      "role": "DeepSeek's own agent loop. Verbose interleaved reasoning on stdout rather than a structured event stream.",
+      "notes": "Must be installed from the PUBLISHED npm package. Running the repo from source is a dead end: @deepseek-ai/cordis declares FiberState as `export const enum`, which TypeScript erases at compile time, leaving no runtime export for tsx's isolated transpilation to import. pnpm run build only builds apps/web, build:lib does not fix it, rescope-vendor runs dry-only, and node_modules/@deepseek-ai/cordis never existed. The published build has the const enums inlined.",
+      "verified": "2026-09-09 PASS (fast, deep-tiel)"
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "runsOn": "wsl",
+      "binary": "/home/priya/.nvm/versions/node/v24.18.0/bin/openclaw",
+      "version": "2026.9.2 (3928bad)",
+      "configPath": "/home/priya/.openclaw/openclaw.json",
+      "acp": {
+        "registeredInZed": false,
+        "command": "/home/priya/.nvm/versions/node/v24.18.0/bin/openclaw",
+        "args": [
+          "acp"
+        ]
+      },
+      "headless": "openclaw agent exec --cwd <dir> --local-model-lean --model llama-swap/<slot> \"<prompt>\"",
+      "slots": [
+        "fast",
+        "deep",
+        "deep-tiel"
+      ],
+      "role": "Chat-platform-first agent with an isolated headless exec mode.",
+      "notes": "Two traps. (1) `openclaw agent --local` ignores cwd entirely and edits ~/.openclaw/workspace; a run configured that way reported \"Fixed and committed\" while the trajectory's file was untouched. Use `agent exec --cwd`, which sets both the agent workspace and the tool working directory. Do not try to stage into the shared workspace instead: OpenClaw attests it in state/openclaw.sqlite and refuses to run once BOOTSTRAP.md has gone missing. (2) The full tool surface builds a 33,635-token system prompt that does not fit deep-tiel's 32,768 context. --local-model-lean, OpenClaw's own reduced surface for local models, fits and makes both deep slots usable -- an earlier note in this file claiming deep-tiel was impossible was wrong.",
+      "verified": "2026-09-09 PASS (fast, deep-tiel)"
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "runsOn": "wsl",
+      "binary": "/home/priya/.local/bin/hermes",
+      "version": "0.21.1 (2026.9.7)",
+      "upstream": "github.com/NousResearch/hermes-agent",
+      "configPath": "/home/priya/.hermes/config.yaml",
+      "headless": "HOME=<dir> HERMES_HOME=/home/priya/.hermes hermes -z \"<prompt>\" -m <slot> --yolo",
+      "slots": [
+        "fast",
+        "deep",
+        "deep-tiel"
+      ],
+      "role": "Standing personal-assistant daemon with persistent cross-session memory, evaluated here purely as a coding harness.",
+      "notes": "Its tools resolve relative paths against $HOME -- not the process working directory, and not --in, which it accepts and then ignores. From a /mnt/d work dir it \"fixed\" ~/.openclaw/workspace/pkg/alias.py, another harness's leftover copy of the same fixture; with --no-restore-cwd it looked for /home/priya/pkg/alias.py and created the directory; from /tmp it edited a stale copy still under $HOME; once that copy was deleted it found nothing. Overriding HOME to the work directory, with HERMES_HOME pinned so its config and session store stay put, makes it edit the right file every time, drvfs included. --yolo is required or the approval prompts block a headless run. Installed with --skip-browser --skip-computer-use (Playwright pulls ~500 MB of Chromium no fixture task can use); bundled skills kept.",
+      "notWiredPreviously": "This harness was recorded here as \"deliberately not wired\" on the strength of its documentation alone -- no ACP, daemon-shaped, memory already covered by funes. That call was made without running it and was overridden.",
+      "verified": "2026-09-09 PASS (fast, deep-tiel)"
+    }
+  ]
+}
