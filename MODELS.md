@@ -1,8 +1,17 @@
 # Model Ledger
 
 Every GGUF that has passed through this stack. Sizes are from `stat`, isolated speed from
-`llama-bench`, correctness and reasoning:content from Pi's real agent loop. Totals here are
+`llama-bench`, correctness and reasoning:content from a real agent loop. Totals here are
 computed from source data, never hand arithmetic.
+
+**The harness changed on 2026-09-09.** Every row up to that date was driven through Pi, which
+has since been removed from the stack (see [`HARNESSES.md`](./HARNESSES.md)). Rows after it are
+driven through Hermes, chosen because it is the only harness that scored 24/24 on *both* live
+model slots — so a failure under it is attributable to the model rather than the harness.
+Correctness is pytest-graded against the resulting files either way, which is harness-agnostic
+and therefore still comparable; reasoning:content and tool-error counts are **not** portable
+across harnesses and are left blank for Hermes-driven rows, since it emits only final response
+text under `-z`.
 
 **Two fixtures — do not compare scores across them.** Work up to 2026-09-04 used a
 `5-task × 3-run` fixture (15 trajectories); it stopped discriminating once several models
@@ -33,6 +42,7 @@ Every row below is tagged with the fixture that produced it.
 | Ling-3.0-tiny Q8_0 (`bailingmoe3`, 7.9B/1.3B active) | 6/8 | 20/24 | 67.16s | 3.73:1 | 190 | Despite the **cleanest isolated benchmark of the entire project** (157.6-158.0 tok/s, near-zero variance), failed `cache` 0/3 outright — 2/3 complete non-action, 1/3 a genuine failed attempt. Cannot perform the "extend with a documented decorator pattern" feature task at all. The sharpest demonstration yet that isolated throughput predicts nothing about real capability, in either direction. |
 | Spark-X2.5-4B Q8_0 | 4/8 | 18/24 | 173.68s | 9.74:1 | 170 | Burns enormous reasoning on hard tasks (up to 879,802 characters on one failed `cache` run) and still frequently times out or barely clears the 400s limit. Required a mainline rebuild for its `spark2_5` architecture (merged upstream past this project's pinned commit — a real rebuild, not a third-party fork). |
 | granite-4.2-3b Q8_0 | 4/8 | 17/24 | 90.46s | 16.35:1 | 315 | Dense IBM Granite architecture. Several `success=1` rows carried massive reasoning (up to 266,641 chars) alongside zero narrated content — succeeding via tool calls alone isn't itself a problem, but outright failures on `overlay`/`cache`/`dedupe`/`pipeline` plus 315 tool errors make it a clear reject. |
+| Qwen3.8-27B-OBLITERATED-Mythos-Class-Agentic Q3_K_L *(Hermes)* | 0/8 | **1/24** | 98.5s (n=1) | — | — | **Degenerate output, not slowness.** Tuning was settled and healthy first — `-ngl 44` / `-c 32768` / 10,636 MiB / 8.27 tok/s — so the slot was not misconfigured. Then asked "17 plus 25", the model spent its entire reasoning budget emitting literal `/` characters: 300 of 300, 100% of the output, under llama.cpp defaults AND Qwen's pinned sampling, with and without a system message. At temperature 0.6 that is a collapsed distribution, not a formatting quirk. 22 of 24 trajectories hit the 500s timeout without producing an edit; the one pass came before the collapse, and a second early trajectory wrote `ALISES` for `ALIASES` and reported it as verified. Two compounding sources of damage are the likely explanation: an aggressive Q3_K_L quant on top of abliteration. |
 | ai9stars_G9v3-3B Q8_0 | 3/8 | 17/24 | 191.35s | 9.78:1 | 284 | **Screen-lies reversal**, same class as gpt-oss's original one: 5/5 on the isolated screen at 16.5s/answer, then 3/8 with four separate 400-second timeouts across `alias`/`cache`/`pipeline` under the harder 8-task fixture. |
 
 ## Rejected on the 5-task protocol (not comparable to the section above)

@@ -32,11 +32,17 @@ models:
     name: "Qwen3.5 9B (fast)"
     ttl: 900
     cmd: |
-      /home/YOU/src/llamacpp/build/bin/llama-server
+      /home/priya/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
-      --model /home/YOU/.local/share/sovereign-ai/models/qwen35-9b/gguf/qwen35-9b-Q6_K.gguf
+      --model /mnt/d/LocalAI/models/qwen3.5-9b/qwen35-9b-Q6_K.gguf
       -ngl 99
+      # Required since this model moved from WSL ext4 to drvfs (D:) in the 2026-09-09
+      # consolidation. Without it llama.cpp mmaps 7.1 GiB over 9p, which made the first
+      # request take ~3 minutes and return HTTP 500, then every retry hang until the client
+      # gave up (HTTP 499). `deep` and `deep-tiel` always had this flag because they always
+      # lived on drvfs; `fast` never needed it on ext4.
+      --no-mmap
       -c 65536
       --flash-attn on
       -ctk q8_0
@@ -57,10 +63,10 @@ models:
     name: "Qwen3.6-35B-A3B APEX-Compact (deep)"
     ttl: 900
     cmd: |
-      /home/YOU/src/llamacpp/build/bin/llama-server
+      /home/priya/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
-      --model /path/to/AI/ModelStore/gguf/qwen3.6-35b-a3b-apex/Qwen3.6-35B-A3B-APEX-Compact.gguf
+      --model /mnt/d/LocalAI/models/qwen3.6-35b-a3b-apex/Qwen3.6-35B-A3B-APEX-Compact.gguf
       -ngl 99
       --n-cpu-moe 20
       --ctx-size 32768
@@ -105,10 +111,10 @@ models:
     name: "Tiel-Coder-35B-A3B MTP UD-Q3_K_XL (deep-tiel)"
     ttl: 900
     cmd: |
-      /home/YOU/src/llamacpp/build/bin/llama-server
+      /home/priya/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
-      --model /path/to/AI/ModelStore/gguf/tiel-coder-35b-a3b/Tiel-Coder-35B-A3B-MTP-UD-Q3_K_XL.gguf
+      --model /mnt/d/LocalAI/models/tiel-coder-35b-a3b/Tiel-Coder-35B-A3B-MTP-UD-Q3_K_XL.gguf
       -ngl 99
       --n-cpu-moe 18
       --ctx-size 32768
@@ -119,10 +125,24 @@ models:
       --jinja
       --reasoning-format deepseek
 
+
+# Qwen3.8-27B-OBLITERATED-Mythos-Class-Agentic Q3_K_L REJECTED 2026-09-10: scored 1/24 on
+# the 8-task protocol through Hermes -- the harness that scores 24/24 on both live slots, so
+# the failure is the model's. 22 of the 24 trajectories hit the 500s timeout without producing
+# an edit. The cause is not speed: asked "17 plus 25", the model emits its entire reasoning
+# budget as literal '/' characters (300 of 300, 100% of the output), under llama.cpp defaults
+# AND under Qwen's pinned sampling, with and without a system message. At temperature 0.6 that
+# is a collapsed distribution, not a formatting quirk. Tuning was settled and healthy before
+# this was found -- -ngl 44 / -c 32768 / 10,636 MiB / 8.27 tok/s -- so the slot was not
+# misconfigured. Two compounding sources of damage are the likely explanation: an aggressive
+# Q3_K_L quant on top of abliteration.
+
 # K2-Horizon REMOVED 2026-09-05: no variant earned a slot. Q8_0 reached 7/8 - 23/24 but a
 # one-trajectory gain over `fast` did not justify depending on an unmerged fork; Q6_K fell
 # to 6/8 - 22/24 while running 36% slower than `fast`; MoVA-36B took twice APEX's
 # wall-clock for worse correctness. Tool errors (215 Q8_0, 175 Q6_K, vs `fast`'s 90) proved
 # inherent to the model rather than the quantization. Fork build deleted.
+
+
 
 
