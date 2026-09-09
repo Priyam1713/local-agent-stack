@@ -231,3 +231,36 @@ answer to exactly that problem.
 
 **Both verdicts were wrong, and those two harnesses are the only ones that scored 24/24 on
 `fast`.** Install it, run it on the fixture, and let the result decide — in both directions.
+
+
+## Epilogue: what the stack looks like now
+
+The campaign above is a record and is not rewritten -- every number, including those for the
+harnesses since removed, stands as measured.
+
+On **2026-09-09**, three harnesses were uninstalled. The criterion was *more than one failed
+task category, or an inability to run a whole model slot*; single-trajectory misses were
+treated as noise, since at three runs per category one miss is not distinguishable from
+chance.
+
+| Removed | Why |
+|---|---|
+| **Pi** | `rollback` 2/3 and `dedupe` 1/3 on `fast` (21/24, last in the field), plus the worst tail measured anywhere -- one trajectory at 9163.9s, 67x the next worst maximum. This was the project's original daily driver and the harness the entire 8-task protocol was built around. |
+| **OpenCode** | The only harness to fail two categories on one slot (`rollback`, `cache`) *and* a third on the other (`pipeline`); additionally acquired a reproducible ~300s startup hang that was never root-caused. |
+| **Codex** | Cannot use the `fast` slot at all. A perfect 24/24 on `deep-tiel`, but a harness covering only half the roster is not worth maintaining when four others cover both. |
+
+Removal was a full uninstall -- npm packages, config and state directories (~1.9 GB), and Zed
+`agent_servers` entries. `verify-harnesses.sh` passes **4/4** afterwards, and
+`sync-harnesses.sh` regenerates cleanly for the four that remain:
+
+| Kept | Role |
+|---|---|
+| **OpenClaw** | `fast`-slot default -- 24/24 at an 18.2s median, the quickest measured. |
+| **Prime Agent** | `deep-tiel` default -- 24/24, 35.5s median, 137.1s ceiling; the only harness both fast and bounded. |
+| **Hermes** | The only harness perfect on both slots, and flat across model tiers. |
+| **dsh** | The most predictable: a 43.6s maximum on `fast`, the tightest ceiling in the campaign. |
+
+Note what this leaves: **both slots keep a strong primary and a real fallback**, which the
+strict reading of the criterion would not have -- it would have removed dsh and Prime Agent
+over a single `pipeline` trajectory each, and with Prime Agent gone the deep slot's best
+remaining option has a p90 worse than Prime's maximum.

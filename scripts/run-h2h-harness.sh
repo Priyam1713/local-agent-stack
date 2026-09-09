@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
 # Harness-parameterized 8-task x 3-run protocol. RUN FROM GIT BASH.
 #
-#   run-h2h-harness.sh <pi|prime|opencode|codex|dsh|openclaw|hermes> <model-slot>
+#   run-h2h-harness.sh <prime|dsh|openclaw|hermes> <model-slot>
 #
 # Same fixture, same tasks, same pytest grading as run-h2h-expanded.sh -- only the harness
 # driving the model changes. That isolates harness effect from model effect.
+#
+# Pi, OpenCode and Codex were removed from the stack on 2026-09-09 for failing more than one
+# task category (or, for Codex, a whole model slot); their branches are gone with them. The
+# recorded results stay in harnesses/results/ -- see registry.json's `removed` block.
 #
 # `success` is graded by pytest against the resulting files, which is completely
 # harness-agnostic and therefore the one metric comparable across all three. Raw JSONL is
 # kept per trajectory so per-harness token/tool metrics can be extracted afterward; their
 # event schemas differ and are NOT directly comparable:
-#   Pi          toolcall_start / isError / thinking_delta / text_delta   (char counts)
 #   Prime Agent message_update with usage{input,output,totalTokens}      (native tokens)
-#   OpenCode    step_finish with tokens{total,input,output,reasoning}    (native tokens)
+#   dsh         plain prose on stdout -- no structured events at all
+#   OpenClaw    provider-transport-fetch lines + a final agent-command summary
+#   Hermes      final response text only under -z
 #
 # Timeout is deliberately generous (500s): a tighter 400s window produced a FALSE NEGATIVE
 # during pre-flight when a run overlapped a llama-swap model load.
@@ -25,8 +30,8 @@
 # codex (WSL), so this is specific to Pi's launcher, not to Windows generally.
 set -uo pipefail
 
-HARNESS="${1:?usage: run-h2h-harness.sh <pi|prime|opencode|codex|dsh|openclaw|hermes> <model-slot>}"
-MODEL="${2:?usage: run-h2h-harness.sh <pi|prime|opencode|codex|dsh|openclaw|hermes> <model-slot>}"
+HARNESS="${1:?usage: run-h2h-harness.sh <prime|dsh|openclaw|hermes> <model-slot>}"
+MODEL="${2:?usage: run-h2h-harness.sh <prime|dsh|openclaw|hermes> <model-slot>}"
 
 SRC=/d/LocalAI/fixture
 OUT="/d/LocalAI/results/h2h-harness-runs-${HARNESS}-${MODEL}"
@@ -106,11 +111,6 @@ for task in $TASKS; do
 
     START=$(date +%s.%N)
     case "$HARNESS" in
-      pi)
-        ( cd "$WORK" && timeout -k 30 $TIMEOUT pi --provider llama-swap --model "$MODEL" --no-session \
-            --tools read,edit,bash --mode json --print "$PROMPT" \
-            > "$JSONOUT" 2>"$OUT/${task}-${run}.err" )
-        ;;
       prime)
         # Prime Agent runs in WSL: convert /d/... to /mnt/d/... . Its only built-in tool is
         # `ipython` -- it edits by writing Python into a persistent REPL, so passing
@@ -135,18 +135,6 @@ for task in $TASKS; do
         RWSL=$(echo "$RUNNER" | sed 's|^/\([a-z]\)/|/mnt/\1/|')
         timeout -k 30 $TIMEOUT wsl.exe -d Ubuntu-24.04 -- bash -c "sed -i 's/\r$//' $RWSL; bash $RWSL" \
           > "$JSONOUT" 2>"$OUT/${task}-${run}.err"
-        ;;
-      opencode)
-        ( cd "$WORK" && timeout -k 30 $TIMEOUT opencode run --format json --model "llama-swap/$MODEL" "$PROMPT" \
-            > "$JSONOUT" 2>"$OUT/${task}-${run}.err" )
-        ;;
-      codex)
-        # Codex CLI runs in WSL: the Windows build is blocked by a WindowsApps execution
-        # policy ("blocked by policy" on pwsh.exe). deep-tiel only -- the `fast` slot's
-        # Qwen3.5 chat template rejects Codex's `instructions` field with "System message
-        # must be at the beginning", found by proxying the wire on port 8099.
-        wsl_run "$WORK" "$OUT" "$task" "$run" \
-          'exec codex exec --skip-git-repo-check -s workspace-write "$P"'
         ;;
       dsh)
         # DeepSeek Harness, from the PUBLISHED npm package (@deepseek-ai/dsh). Running the

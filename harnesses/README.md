@@ -1,24 +1,30 @@
 # Multi-harness setup
 
-Seven coding harnesses, one model backend, one source of truth.
+Four coding harnesses, one model backend, one source of truth.
 
-All seven drive the **same** llama-swap instance at `http://127.0.0.1:8080/v1` and see the
+All four drive the **same** llama-swap instance at `http://127.0.0.1:8080/v1` and see the
 **same** model slots. That is the whole point: swapping harness must change only the harness,
 never the models, or nothing measured across them is comparable.
 
 ```
-                          llama-swap  (127.0.0.1:8080/v1)
-                          fast / deep / deep-tiel
-                                     |
-   +---------+---------+-------------+-------------+---------+---------+
-   |         |         |             |             |         |         |
-  Pi     OpenCode  Prime Agent     Codex          dsh    OpenClaw   Hermes
-(Windows) (Windows)   (WSL)        (WSL)          (WSL)    (WSL)     (WSL)
+              llama-swap  (127.0.0.1:8080/v1)
+              fast / deep / deep-tiel
+                          |
+   +--------------+-------+-------+--------------+
+   |              |               |              |
+Prime Agent      dsh          OpenClaw        Hermes
+   (WSL)         (WSL)          (WSL)          (WSL)
 ```
 
 The goal is **not** to crown one winner. It is to know which harness is worth reaching for on
 which kind of work, and on which slot -- a harness that is mediocre overall but reliably best
 at one category still earns its place.
+
+**Seven were benchmarked; three were removed on 2026-09-09.** Pi, OpenCode and Codex each
+failed more than one task category or could not run a whole model slot. The full comparison,
+including their results, is in [`HARNESSES.md`](../HARNESSES.md); the removal reasons are in
+`registry.json` under `removed`. Their measurements stand as a record even though the
+harnesses are gone.
 
 ## The one rule that keeps this from rotting
 
@@ -28,7 +34,7 @@ at one category still earns its place.
 This is not theoretical tidiness. When this was set up, Prime Agent's config still described
 `deep` as "Nemotron 3.5 Lightning" -- a model deleted days earlier and replaced by APEX -- and
 still listed a `deep-lite` slot that no longer existed, while missing `fast` and `deep-tiel`
-entirely. Seven harnesses times a changing model roster, each maintained by hand, guarantees
+entirely. Four harnesses times a changing model roster, each maintained by hand, guarantees
 that kind of drift.
 
 **After any slot change, run:**
@@ -40,6 +46,10 @@ wsl.exe -d Ubuntu-24.04 -- bash -c "bash /mnt/d/LocalAI/config/harnesses/sync-ha
 It reads the live slots, pulls each slot's display name from its own `name:` field, and
 rewrites the generated provider configs. Idempotent; safe to re-run.
 
+It also derives each slot's **context window** from that slot's own `-c` / `--ctx-size` line.
+A single hardcoded number is how every harness config came to advertise 65536 tokens on slots
+llama-swap only opens at 32768 -- the client then packs a request the server cannot accept.
+
 ## Verifying
 
 "Integrated" means proven, not "the binary exists and the config looks plausible":
@@ -50,9 +60,10 @@ bash /d/LocalAI/config/harnesses/verify-harnesses.sh fast
 
 Four things this caught that a config inspection would have missed:
 
-- **Each harness must be invoked where it lives.** Running Pi from inside WSL resolved a
-  different `HOME` and it reported `Unknown provider "llama-swap"` despite being correctly
-  configured on the Windows side. Pi and OpenCode run on Windows; the other five run in WSL.
+- **Each harness must be invoked where it lives.** All four survivors run in WSL, but this
+  rule cost real debugging time before the Windows-side harnesses were removed: running Pi
+  from inside WSL resolved a different `HOME` and it reported
+  `Unknown provider "llama-swap"` despite being correctly configured on the Windows side.
 - **Git Bash mangles bare WSL paths.** Passing `/mnt/d/...` or `/home/priya/...` straight to
   `wsl.exe` from Git Bash rewrites it to `C:/Program Files/Git/mnt/d/...`, which fails with
   "No such file or directory" **and still exits 0**. Wrap it:
@@ -61,21 +72,18 @@ Four things this caught that a config inspection would have missed:
   the fix while changing nothing on disk. OpenClaw went further and reported "Fixed and
   committed" for an edit it had made to a different copy of the file. Grade by running the
   tests against the resulting files, never by reading the transcript.
-- **Three harnesses have no `--model` flag.** codex, dsh and hermes read the slot from a config
-  file, so a benchmark run that forgets to rewrite it silently measures the previous slot.
-  `set-harness-model.sh` does that rewrite and echoes back what the file now says.
+- **dsh has no `--model` flag.** It reads the slot from a config file, so a run that forgets
+  to rewrite it silently measures the previous slot. `set-harness-model.sh` does that rewrite
+  and echoes back what the file now says.
 
 ## The harnesses
 
 | | Runs on | Slots | Role |
 |---|---|---|---|
-| **Pi** | Windows | all | Default daily driver. The 8-task protocol was built around it; all 360 early trajectories ran through it. |
-| **Prime Agent** | WSL | all | Capability amplification. Persistent IPython REPL, recursive subagents, Continual Harness carrying memory/skills across trajectories. The ARC-AGI-3 95.5% harness (PrimeIntellect). |
-| **OpenCode** | Windows | all | Multi-provider alternative. Persistent client/server sessions (SQLite) that survive terminal disconnects. |
-| **Codex** | WSL | deep only | A mainstream commercial harness pointed at local weights -- the control that shows how much of the behaviour is harness rather than model. |
-| **dsh** | WSL | all | DeepSeek's own agent loop. Verbose interleaved reasoning on stdout rather than a structured event stream. |
-| **OpenClaw** | WSL | all | Chat-platform-first agent with an isolated headless `agent exec` mode. |
-| **Hermes** | WSL | all | Standing personal-assistant daemon with persistent cross-session memory, evaluated here purely as a coding harness. |
+| **Prime Agent** | WSL | all | **Deep-slot default.** 24/24 on `deep-tiel` at a 35.5s median and a 137.1s ceiling -- the only harness that is both fast and bounded. Persistent IPython REPL, recursive subagents, Continual Harness (PrimeIntellect). |
+| **OpenClaw** | WSL | all | **Fast-slot default.** 24/24 on `fast` at an 18.2s median, the quickest measured. Falls to a 79.1s median on `deep-tiel`, so it is a poor deep choice. |
+| **Hermes** | WSL | all | The only harness perfect on **both** slots (24/24 / 24/24). Flat across model tiers -- 37.9s on `fast`, 35.5s on `deep-tiel` -- because its clock is fixed per-turn overhead, not token generation. |
+| **dsh** | WSL | all | The most *predictable*: a 43.6s maximum on `fast` is the tightest ceiling measured anywhere in the campaign. DeepSeek's own agent loop; verbose interleaved reasoning on stdout. |
 
 ## Gotchas worth knowing
 
@@ -83,15 +91,6 @@ Four things this caught that a config inspection would have missed:
   and depending on `@earendil-works/pi-*`. Its `repository` field resolves to
   `github.com/PrimeIntellect-ai/prime-agent`, directory `packages/coding-agent` -- Zechner
   authors that package inside their monorepo. It is not a name collision with Pi.
-- **OpenCode Desktop is not OpenCode CLI.** The Electron desktop app (`@opencode-aidesktop`)
-  ships no CLI binary. ACP registration and headless runs both need the npm package
-  (`npm install -g --allow-scripts=opencode-ai opencode-ai`) -- npm's script guard blocks the
-  postinstall that fetches the real binary unless `--allow-scripts` is passed.
-- **Codex cannot use the `fast` slot.** Qwen3.5's chat template rejects Codex's `instructions`
-  field with "System message must be at the beginning". The client shows a retry storm and
-  "We're currently experiencing high demand", which looks like a server problem and is not.
-  Diagnosed by proxying the wire on port 8099. The Windows build is separately unusable --
-  `pwsh.exe` resolves to the WindowsApps alias and is blocked by execution policy -- hence WSL.
 - **dsh must come from npm, not from source.** `@deepseek-ai/cordis` declares `FiberState` as
   `export const enum`, which TypeScript erases at compile time, so tsx's isolated transpilation
   has no runtime export to import. `pnpm run build` only builds `apps/web`, `build:lib` does not
@@ -108,6 +107,10 @@ Four things this caught that a config inspection would have missed:
   of the file elsewhere under `$HOME`. Run it as
   `HOME=<workdir> HERMES_HOME=/home/priya/.hermes hermes -z "<prompt>" -m <slot> --yolo`.
   Without `--yolo` the approval prompts block a headless run.
+- **`timeout` needs `-k`.** GNU `timeout` sends SIGTERM and then *waits* for the child. Against
+  Pi's Windows launcher that signal never landed and one trajectory ran 9163.9s -- 18x its own
+  500s bound. `timeout -k 30 500` adds a SIGKILL that maps to a real `TerminateProcess`. Kept
+  here because the failure mode is not Pi-specific in principle, only in this campaign.
 
 ## A harness is not eliminated until it has been run
 
@@ -120,7 +123,8 @@ The same file also asserted that OpenClaw could not run `deep-tiel` at all. That
 measured -- but measured on a default configuration, and the harness ships its own answer to
 exactly that problem, so the slot works fine.
 
-Install it, run it on the fixture, and let the result decide -- in both directions.
+**Those two are now the only harnesses that scored 24/24 on `fast`.** Install it, run it on
+the fixture, and let the result decide -- in both directions.
 
 ## Adding a harness
 

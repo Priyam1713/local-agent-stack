@@ -3,7 +3,7 @@
 #
 # Why this exists: harness configs drift. prime-agent's models.json still described `deep`
 # as "Nemotron 3.5 Lightning" days after Nemotron was deleted and `deep` became APEX, and
-# still listed a `deep-lite` slot that no longer existed. Hand-maintaining N harness configs
+# still listed a `deep-lite` slot that no longer existed. Hand-maintaining four harness configs
 # against a changing model roster guarantees that kind of rot.
 #
 # The rule this enforces: llama-swap.yaml is the single source of truth for what models
@@ -88,65 +88,7 @@ else
   echo "prime-agent config dir absent, skipping"
 fi
 
-# --- 2. OpenCode CLI -------------------------------------------------------------------
-OC_DIR=/mnt/c/Users/priya/.config/opencode
-mkdir -p "$OC_DIR"
-echo "=== regenerating opencode.json ==="
-{
-  printf '{\n'
-  printf '  "$schema": "https://opencode.ai/config.json",\n'
-  printf '  "provider": {\n'
-  printf '    "llama-swap": {\n'
-  printf '      "npm": "@ai-sdk/openai-compatible",\n'
-  printf '      "name": "llama-swap (local)",\n'
-  printf '      "options": { "baseURL": "%s" },\n' "$ENDPOINT"
-  printf '      "models": {\n'
-  first=1
-  for s in $SLOTS; do
-    label=$(slot_label "$s"); [ -n "$label" ] || label="$s"
-    ctx=$(slot_ctx "$s"); [ -n "$ctx" ] || ctx=$CTX
-    [ $first -eq 1 ] || printf ',\n'
-    first=0
-    printf '        "%s": {\n' "$s"
-    printf '          "name": "%s",\n' "$label"
-    printf '          "limit": { "context": %s, "output": %s }\n' "$ctx" "$MAXTOK"
-    printf '        }'
-  done
-  printf '\n      }\n    }\n  }\n}\n'
-} > "$OC_DIR/opencode.json"
-echo "wrote $OC_DIR/opencode.json"
-
-# --- 3. Pi ------------------------------------------------------------------------------
-# Pi's models.json is NOT regenerated wholesale: its per-model "reasoning" flags are
-# hand-tuned (fast is marked reasoning:false, the deep slots true) and nothing in
-# llama-swap.yaml can derive that. Only contextWindow is asserted, because that IS derivable
-# and was wrong -- every slot claimed 65536 while the server opens the deep slots at 32768.
-PI_JSON=/mnt/c/Users/priya/.pi/agent/models.json
-if [ -f "$PI_JSON" ]; then
-  echo "=== asserting Pi contextWindow per slot ==="
-  PI_CTX=""
-  for s in $SLOTS; do
-    c=$(slot_ctx "$s"); [ -n "$c" ] || c=$CTX
-    PI_CTX="$PI_CTX $s=$c"
-  done
-  PI_CTX="$PI_CTX" node -e "
-const fs=require('fs');
-const p='/mnt/c/Users/priya/.pi/agent/models.json';
-const want=Object.fromEntries(process.env.PI_CTX.trim().split(/\s+/).map(x=>x.split('=')));
-const d=JSON.parse(fs.readFileSync(p,'utf8'));
-let changed=0;
-for(const m of d.providers['llama-swap'].models){
-  const w=Number(want[m.id]);
-  if(w && m.contextWindow!==w){ console.log('  '+m.id+': '+m.contextWindow+' -> '+w); m.contextWindow=w; changed++; }
-}
-if(changed) fs.writeFileSync(p, JSON.stringify(d,null,2)+String.fromCharCode(10));
-console.log('  '+(changed?('rewrote '+changed+' model(s)'):'already correct'));
-" 2>&1 || echo "  (node unavailable -- Pi contextWindow NOT verified)"
-else
-  echo "Pi config absent, skipping"
-fi
-
-# --- 4. OpenClaw -----------------------------------------------------------------------
+# --- 2. OpenClaw -----------------------------------------------------------------------
 OCLAW=/home/priya/.openclaw/openclaw.json
 if [ -d /home/priya/.openclaw ]; then
   echo "=== regenerating openclaw.json ==="
@@ -182,7 +124,7 @@ else
   echo "openclaw config dir absent, skipping"
 fi
 
-# --- 5. dsh (DeepSeek Harness) ----------------------------------------------------------
+# --- 3. dsh (DeepSeek Harness) ----------------------------------------------------------
 # dsh has no --model flag, so agent-default-model IS the model selection. Preserve whatever
 # slot is currently selected rather than silently resetting a benchmark run's choice; fall
 # back to the first live slot when the file does not exist yet.
@@ -215,20 +157,7 @@ else
   echo "dsh config dir absent, skipping"
 fi
 
-# --- 6. Codex ---------------------------------------------------------------------------
-# Not regenerated: the file accumulates [projects."..."] trust entries that must survive.
-# Only the endpoint is asserted. wire_api MUST stay "responses" -- Codex 0.153 removed
-# "chat", and the `model` line is owned by set-harness-model.sh.
-CODEX=/home/priya/.codex/config.toml
-if [ -f "$CODEX" ]; then
-  echo "=== checking codex config.toml ==="
-  sed -i "s|^base_url = .*|base_url = \"$ENDPOINT\"|" "$CODEX"
-  grep -E '^(model|model_provider|base_url|wire_api) ' "$CODEX" | sed 's/^/  /'
-else
-  echo "codex config absent, skipping"
-fi
-
-# --- 7. Hermes --------------------------------------------------------------------------
+# --- 4. Hermes --------------------------------------------------------------------------
 # Not regenerated either: config.yaml is Hermes's own heavily-commented example file and
 # most of it is unrelated to models. Only the endpoint is asserted; the slot is chosen per
 # invocation with -m.
