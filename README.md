@@ -8,8 +8,10 @@ kept, nothing hand-waved.
 
 RTX 5070 Ti Laptop (12 GB VRAM, Blackwell / `sm_120`), 32 GB system RAM, Ryzen AI 9 HX 375.
 Inference via [llama.cpp](https://github.com/ggml-org/llama.cpp) + [llama-swap](https://github.com/mostlygeek/llama-swap)
-(model residency/routing), harness is [Pi](https://github.com/badlogic/pi-mono) driven
-through Zed's Agent Client Protocol.
+(model residency/routing). The stack began with [Pi](https://github.com/badlogic/pi-mono)
+as its only harness; since 2026-09-09 it runs four — Prime Agent, OpenClaw, Hermes and dsh — all
+against the same llama-swap slots, three of them registered in Zed over the Agent Client Protocol.
+See [`HARNESSES.md`](./HARNESSES.md).
 
 ## Why this exists
 

@@ -1,5 +1,14 @@
 # Daily coding stack manifest
 
+> **Current state (re-verified 2026-11-24):** three slots — `fast` (Qwen3.5-9B Q6_K),
+> `deep` (Qwen3.6-35B-A3B APEX-Compact) and `deep-tiel` (Tiel-Coder-35B-A3B) — served by
+> llama-swap v252 from `/mnt/d/LocalAI/config/llama-swap.yaml`, driven by four harnesses
+> (Prime Agent, OpenClaw, Hermes, dsh; see [`HARNESSES.md`](./HARNESSES.md) and
+> [`MODELS.md`](./MODELS.md)). Everything moved from `E:` to `D:\LocalAI` on 2026-09-09.
+> The manifest directly below is the **2026-09-02 snapshot** this journal starts from: its
+> slots (Nemotron `deep`, `deep-budget*`, `deep-lite`, `vision`), the Pi policy and the `E:`
+> paths describe the stack as it was then, not as it is now.
+
 Frozen 2026-09-02; updated 2026-09-03 for the final sampling reversion. This is the operational Zed + Pi + llama-swap setup; measurements below are local observations, not synthetic benchmark claims.
 
 ## Pinned components
