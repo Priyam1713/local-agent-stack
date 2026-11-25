@@ -8,7 +8,7 @@ never the models, or nothing measured across them is comparable.
 
 ```
               llama-swap  (127.0.0.1:8080/v1)
-              fast / deep / deep-tiel
+       fast / deep / deep-tiel / deep-inkling
                           |
    +--------------+-------+-------+--------------+
    |              |               |              |

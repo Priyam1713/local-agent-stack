@@ -34,7 +34,11 @@ HARNESS="${1:?usage: run-h2h-harness.sh <prime|dsh|openclaw|hermes> <model-slot>
 MODEL="${2:?usage: run-h2h-harness.sh <prime|dsh|openclaw|hermes> <model-slot>}"
 
 SRC=/d/LocalAI/fixture
-OUT="/d/LocalAI/results/h2h-harness-runs-${HARNESS}-${MODEL}"
+OUT="${OUT:-/d/LocalAI/results/h2h-harness-runs-${HARNESS}-${MODEL}}"
+# SLOT_GUARD=1 probes the slot before every trajectory and reloads a degenerate server
+# (see slot-guard.sh for the 2026-11-25 fault that motivated it). Off by default so earlier
+# runs stay reproducible exactly as recorded.
+SLOT_GUARD="${SLOT_GUARD:-0}"
 PYTEST="$SRC/.venv/Scripts/python.exe"
 TIMEOUT=500
 
@@ -59,8 +63,8 @@ wsl_run() {
   {
     echo '#!/usr/bin/env bash'
     echo 'set -uo pipefail'
-    echo 'export HOME=/home/priya'
-    echo 'export PATH="/home/priya/.nvm/versions/node/v24.18.0/bin:/home/priya/.local/bin:/usr/local/bin:/usr/bin:/bin"'
+    echo 'export HOME=/home/YOU'
+    echo 'export PATH="/home/YOU/.nvm/versions/node/v24.18.0/bin:/home/YOU/.local/bin:/usr/local/bin:/usr/bin:/bin"'
     echo 'export LLAMA_SWAP_KEY=local-no-auth'
     echo "P=\$(cat $pwsl)"
     echo "W=$wwsl"
@@ -109,6 +113,11 @@ for task in $TASKS; do
     JSONOUT="$OUT/${task}-${run}.jsonl"
     PROMPT="${PROMPTS[$task]}"
 
+    if [ "$SLOT_GUARD" = 1 ]; then
+      wsl.exe -d Ubuntu-24.04 -- bash -c "bash /mnt/d/LocalAI/config/harnesses/slot-guard.sh $MODEL" \
+        | tee -a "$OUT/guard.log"
+    fi
+
     START=$(date +%s.%N)
     case "$HARNESS" in
       prime)
@@ -129,7 +138,7 @@ for task in $TASKS; do
           echo '#!/usr/bin/env bash'
           echo 'set -uo pipefail'
           echo "P=\$(cat $PWSL)"
-          echo "exec /home/priya/.nvm/versions/node/v24.18.0/bin/prime-agent \\"
+          echo "exec /home/YOU/.nvm/versions/node/v24.18.0/bin/prime-agent \\"
           echo "  --provider llama-swap --model $MODEL --cwd $WWSL --no-session --mode json --print \"\$P\""
         } > "$RUNNER"
         RWSL=$(echo "$RUNNER" | sed 's|^/\([a-z]\)/|/mnt/\1/|')
@@ -163,13 +172,13 @@ for task in $TASKS; do
         # directory and not --in, both of which it accepts and then ignores. Four pre-flight
         # variants pinned this down: from /mnt/d it "fixed" ~/.openclaw/workspace/pkg/alias.py
         # (another harness's leftover copy of the same fixture); with --no-restore-cwd it
-        # looked for /home/priya/pkg/alias.py and created the directory; from /tmp it edited
+        # looked for /home/YOU/pkg/alias.py and created the directory; from /tmp it edited
         # a stale copy still sitting under $HOME; and once that copy was deleted it found
         # nothing at all. Overriding HOME to the trajectory directory -- with HERMES_HOME
         # pinned so its own config and session store stay put -- makes it edit the right
         # file every time, on drvfs included.
         # --yolo bypasses the approval prompts, which would otherwise block a headless run.
-        wsl_run "$WORK" "$OUT" "$task" "$run"           'export HERMES_HOME=/home/priya/.hermes
+        wsl_run "$WORK" "$OUT" "$task" "$run"           'export HERMES_HOME=/home/YOU/.hermes
 export HOME="$W"
 exec hermes -z "$P" -m '"$MODEL"' --yolo'
         ;;

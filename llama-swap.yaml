@@ -32,7 +32,7 @@ models:
     name: "Qwen3.5 9B (fast)"
     ttl: 900
     cmd: |
-      /home/priya/src/llamacpp/build/bin/llama-server
+      /home/YOU/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
       --model /mnt/d/LocalAI/models/qwen3.5-9b/qwen35-9b-Q6_K.gguf
@@ -63,7 +63,7 @@ models:
     name: "Qwen3.6-35B-A3B APEX-Compact (deep)"
     ttl: 900
     cmd: |
-      /home/priya/src/llamacpp/build/bin/llama-server
+      /home/YOU/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
       --model /mnt/d/LocalAI/models/qwen3.6-35b-a3b-apex/Qwen3.6-35B-A3B-APEX-Compact.gguf
@@ -111,7 +111,7 @@ models:
     name: "Tiel-Coder-35B-A3B MTP UD-Q3_K_XL (deep-tiel)"
     ttl: 900
     cmd: |
-      /home/priya/src/llamacpp/build/bin/llama-server
+      /home/YOU/src/llamacpp/build/bin/llama-server
       --host 127.0.0.1
       --port ${PORT}
       --model /mnt/d/LocalAI/models/tiel-coder-35b-a3b/Tiel-Coder-35B-A3B-MTP-UD-Q3_K_XL.gguf
@@ -144,5 +144,44 @@ models:
 # inherent to the model rather than the quantization. Fork build deleted.
 
 
+# November digest candidates, round 1, 2026-11-25 (see STACK.md, same date). Inkling IQ3_XXS
+# was later ADDED as `deep-inkling` on the hard fixture -- see that slot below.
+# Inkling 2 Mini UD-IQ3_XXS scored 24/24 through Hermes but at ~2x the incumbents' median
+# (78.0s vs 37.9s fast / 35.5s deep-tiel) -- a tie on a saturated fixture, dominated on speed.
+# It needed ~/src/llamacpp-next (arch inkling2_loop) with -ub 256 --n-cpu-moe 6 -np 1 --fit off
+# --load-mode none. Inkling UD-Q4_K_XL cannot fit: its compute buffer spills 1.7-3.0 GB to shared
+# memory even at -ub 64. Qwen3.8-27B UD3.1 IQ4_XS (-ngl 44, 7.4 tok/s) went 2/10 clean, timing
+# out on multi-minute reasoning streams.
 
-
+  # Inkling 2 Mini UD-IQ3_XXS -- ADDED 2026-11-25 alongside `deep` after the HARD fixture
+  # (12 tasks x 3, hidden tests, run-h2h-hard.sh; see STACK.md same date). This reverses the
+  # round-1 rejection above, which was a tie on the saturated 8-task fixture decided on speed;
+  # the user ruled speed out for this comparison.
+  #   Inkling: 30/36 trajectories, every failure a 900s cutoff, never a wrong finished answer.
+  #   deep (APEX): stopped early after falling behind -- on the same 21 trajectories it was
+  #   15 fully correct vs Inkling's 17, with one wrong finished answer. APEX passed MORE
+  #   individual hidden tests (306 vs 270 of 337) because its failures were near-misses.
+  # So: Inkling is the more reliable finisher, APEX the faster and closer-on-misses one. Kept
+  # BOTH. Inkling is ~2.5x slower (8-task median 78.0s vs 30.4s) and needs ~/src/llamacpp-next
+  # (bb692ef, arch inkling2_loop) -- the mainline pinned build cannot load it.
+  # Fit (settled in round 1): -ub 256 --n-cpu-moe 6 -np 1 --fit off --load-mode none.
+  deep-inkling:
+    name: "Inkling 2 Mini UD-IQ3_XXS (deep-inkling)"
+    ttl: 900
+    cmd: |
+      /home/YOU/src/llamacpp-next/build/bin/llama-server
+      --host 127.0.0.1
+      --port ${PORT}
+      --model /mnt/d/LocalAI/models/inkling-2-mini/Inkling-2-Mini-UD-IQ3_XXS.gguf
+      -ngl 99
+      --n-cpu-moe 6
+      -ub 256
+      -np 1
+      --fit off
+      --ctx-size 32768
+      --flash-attn on
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --load-mode none
+      --jinja
+      --reasoning-format deepseek

@@ -1,7 +1,9 @@
 # Daily coding stack manifest
 
-> **Current state (re-verified 2026-11-24):** three slots — `fast` (Qwen3.5-9B Q6_K),
-> `deep` (Qwen3.6-35B-A3B APEX-Compact) and `deep-tiel` (Tiel-Coder-35B-A3B) — served by
+> **Current state (re-verified 2026-11-25):** four slots — `fast` (Qwen3.5-9B Q6_K),
+> `deep` (Qwen3.6-35B-A3B APEX-Compact), `deep-tiel` (Tiel-Coder-35B-A3B) and `deep-inkling`
+> (Inkling 2 Mini UD-IQ3_XXS, added 2026-11-25, served by the separate `~/src/llamacpp-next`
+> build; see the round-2 section at the end) — served by
 > llama-swap v252 from `/mnt/d/LocalAI/config/llama-swap.yaml`, driven by four harnesses
 > (Prime Agent, OpenClaw, Hermes, dsh; see [`HARNESSES.md`](./HARNESSES.md) and
 > [`MODELS.md`](./MODELS.md)). Everything moved from `E:` to `D:\LocalAI` on 2026-09-09.
@@ -13,7 +15,10 @@ Frozen 2026-09-02; updated 2026-09-03 for the final sampling reversion. This is 
 
 ## Pinned components
 
-- WSL: Ubuntu 24.04, mirrored networking; Windows and WSL share `127.0.0.1:8080`.
+- WSL: Ubuntu 24.04, memory cap 22 GB since 2026-11-26 (MiniMax H3's 15.7 GB text encoder took
+  WSL to ~19.5 GB; the LLM slots alone need 14 GB). NAT networking since 2026-11-25 (was mirrored; under mirrored every IPv4
+  packet from WSL to the internet was silently dropped, most likely by a second Hyper-V switch on
+  the Wi-Fi NIC). Windows reaches WSL services on `127.0.0.1:8080` through localhost forwarding.
 - llama.cpp: b10726, commit `85c5522`, CUDA `sm_120`; binaries in `/home/YOU/src/llamacpp/build/bin/`.
 - llama-swap: v252 (`e31a1ad`), `/home/YOU/bin/llama-swap`.
 - Pi: 0.84.4; Pi ACP: 0.0.33.
@@ -1449,3 +1454,111 @@ about real agentic capability, in either direction.
 
 **None promoted.** Test slots removed. All four GGUFs retained in Downloads pending the
 user's disposal decision.
+
+## November research-digest candidates — 2026-11-25 — round 1 none adopted (Inkling IQ3_XXS added in round 2, below)
+
+Triage of the user's November research digest. Three files downloaded on the user's approval
+(on Windows with `curl.exe -C -`, ~3.5 MB/s line ceiling; all three sha256-verified against the
+Hugging Face LFS oids by `config/verify-nov-candidates.py`). Wan 2.2 A14B was not selected.
+Corrections to the digest before testing: FLUX 3 Klein is already installed; unsloth's "UD3.1"
+re-quant of 2026-11-11 covered Qwen3.8-27B **IQ4_XS and Q4_K_XL only** — the IQ3_XXS rejected on
+2026-09-04 was not re-uploaded (last commit 2026-08-19), so retesting it would repeat that result.
+
+Protocol: unchanged 8-task × 3-run fixture through Hermes (`run-h2h-harness.sh hermes <slot>`),
+500s per trajectory, pytest-graded. Baselines: `fast` 24/24, median 37.9s; `deep-tiel` 24/24,
+median 35.5s.
+
+| Candidate | Fit | Speed | Protocol | Verdict |
+|---|---|---|---|---|
+| Inkling 2 Mini UD-IQ3_XXS (11.66 GB) | `-ub 256 --n-cpu-moe 6`, 11,095 MiB | 41.6 tg / 500 pp tok/s | **24/24**, 8/8; median 78.0s, p90 177.1s, max 240.2s, 102.1s wall/success | Dominated: ties both incumbents on correctness at ~2× their median. Fixture is saturated at this tier, so a tie can't justify a slot. |
+| Inkling 2 Mini UD-Q4_K_XL (17.63 GB) | Does not fit at any setting tried | 18.0-23.2 tg / 51-127 pp tok/s | Not run | Rejected on fit. Compute buffer stays 3.9-7.2 GB even at `-ub 64`, so llama.cpp claims 14.0-15.2 GB against 12.2 GB physical and spills 1.7-3.0 GB to shared memory. Half IQ3's decode, a quarter-to-a-tenth its prompt speed — it would lose to IQ3, which already lost. |
+| Qwen3.8-27B UD3.1 UD-IQ4_XS (14.35 GB) | `-ngl 44`, 10,539 MiB (40 = 9,687 / 6.6 tok/s; 48 = 11,321, over) | 7.4 tok/s | **2/10 clean** (alias 1-2 pass; 8 fail, 7 at the 500s limit with no edits) | Rejected. Smoke test clean; the failure is speed: a dense 27B at 44 layers writes one multi-minute reasoning stream per turn (~580 KB SSE), then Hermes's 30s follow-up waits time out (four HTTP 499s per trajectory). Ceiling with every remaining row passing: 16/24. |
+
+### Inkling 2 Mini notes (for any future looped-architecture model)
+- Architecture `inkling2_loop` (26.2B / 3.4B active, 128 experts / 8 used, 24 blocks looped ×3)
+  postdates the pinned 85c5522 build. Built current llama.cpp at `~/src/llamacpp-next`
+  (commit bb692ef, CUDA sm_120) via `config/build-llamacpp-next.sh`; needed
+  `cuda-nvml-dev-12-9` for `nvml.h` (the .deb verified against apt's signed index, installed with
+  dpkg). That build renamed `--no-mmap` to `--load-mode none` and defaults `--fit` on.
+- The loop's compute buffer is the binding constraint, not the weights. At the default
+  `-ub 512` it is ~3.4 GB and spills to shared memory (decode 9.3 tok/s). `-ub 256` fixes IQ3.
+  llama.cpp sizes the buffer to whatever VRAM is free, so total VRAM read constant (10,711 MiB
+  llama.cpp / 11,095 nvidia-smi) across `--n-cpu-moe` 2-10 — read llama.cpp's own
+  `common_memory_breakdown_print` (with `--verbose`, `--fit off`), not nvidia-smi, to see a spill.
+- The model card warns about reasoning loops; none were observed in 24 IQ3 trajectories.
+- Sweep scripts: `config/vram-sweep-inkling.sh`, `config/probe-inkling-q4-guarded.sh`.
+
+### Incident: WSL hang during the Q4_K_XL sweep (root-caused)
+Stopping the Qwen protocol from Windows (TaskStop on the `wsl.exe` wrapper, then `pkill` of the
+running Hermes) did **not** stop `run-h2h-harness.sh` inside the VM — it carried on through the
+remaining 14 trajectories until 04:45. The Q4_K_XL sweep started at ~04:10 on top of it, with
+ComfyUI also resident, and two 14-17 GB no-mmap loads in a 14 GB VM exhausted memory: WSL stopped
+answering (`HCS_E_CONNECTION_TIMEOUT`), Windows free RAM fell to 2.5 GB. Recovered with
+`wsl --shutdown`. The 14 overlapping Qwen rows are excluded above as contaminated.
+**Rule:** to stop a protocol run, kill it inside WSL (`pkill -f run-h2h-harness`) and confirm
+with `pgrep` before starting anything else heavy. The guarded probe script now runs a memory
+watchdog (kills `llama-server` under 1.2 GB available).
+
+### Also fixed this session
+WSL networking moved from `mirrored` to `nat` — see the WSL line under "Service and routing".
+
+### Disk
+Deleted on the user's instruction 2026-11-25: Inkling Q4_K_XL (17.63 GB) and Qwen3.8 UD3.1 IQ4_XS
+(14.35 GB, with its folder). Inkling IQ3_XXS (11.66 GB) stays — it serves `deep-inkling`.
+`~/src/llamacpp-next` is kept — it is the only build that can load `inkling2_loop`.
+
+## Round 2: Inkling IQ3_XXS vs `deep` on a HARD fixture — 2026-11-25 — ADDED as `deep-inkling`
+
+User's brief: test Inkling for the `deep` slot; if the 8-task fixture ties, raise the difficulty
+and task count, and **do not judge on timing**. Later: no reruns of timed-out trajectories, and
+stop `deep` as soon as it falls behind.
+
+### `deep` baseline on the 8-task fixture, and a llama.cpp server fault
+- First run `run-h2h-harness.sh hermes deep` scored **11/24 — invalid**. After 11 good
+  trajectories the APEX `llama-server` (pinned 85c5522) degenerated: every reply became only `/`
+  characters in `reasoning_content`, which Hermes reported as "Context length exceeded (57
+  tokens)". The process stayed broken; unload + reload fixed it at once (3/3 clean "42").
+- Fix: `config/harnesses/slot-guard.sh <slot>` probes "17 plus 25" before each trajectory and
+  reloads a degenerate server; `run-h2h-harness.sh` runs it with `SLOT_GUARD=1`, and
+  `run-h2h-hard.sh` always does. Its output goes to `guard.log` in the results folder.
+- Guarded rerun: **`deep` 23/24**, median 30.4s, max 116s. The one failure (overlay-1) is real:
+  overlay values for existing keys were dropped. Inkling was 24/24 (median 78.0s), so a
+  one-trajectory gap on a saturated fixture: a tie, which triggered the hard fixture.
+- **Open question, not acted on:** the 2026-09-10 Mythos rejection recorded the same `/`
+  collapse. It may have been this server fault rather than quantization damage. The verdict
+  stands (it also failed on other grounds); note it before rejecting anything else on `/` output.
+
+### The hard fixture
+`D:\LocalAI\fixture-hard` (starting code), `fixture-hard-tests` (hidden tests),
+`fixture-hard-ref` (reference solutions, never shown to models); validated by
+`config/validate-fixture-hard.sh` (every test fails on the start code, passes on the reference).
+12 tasks × 3 runs = 36 trajectories, 245 hidden pytest cases: lru, intervals (+ insert), calc
+(precedence-climbing parser), csvparse (quoting), rename (package + caller + deprecated alias),
+toposort (tie-breaking + cycles), ratelimit, semver (+ ranges), money (Decimal, half-even),
+envsubst (defaults), pagination (bugs in two files), trie. Prompts state symptoms only; the
+docstring is the spec; tests are copied in **after** Hermes exits. 900s per trajectory, only to
+end stuck runs. Runner: `config/harnesses/run-h2h-hard.sh <slot>`; results in
+`results/h2h-hard-hermes-<slot>/results.tsv` (task, run, sec, success, passed, failed).
+
+### Result
+| | Inkling IQ3_XXS | `deep` (APEX) |
+|---|---|---|
+| Trajectories | **30/36** (all 36 run) | 15/22 when stopped |
+| Same 21 trajectories (excl. toposort-2) | **17** fully correct | 15 fully correct |
+| Hidden tests, same 21 | 270/337 | **306/337** |
+| Failures that were 900s cutoffs | 6 of 6 | 5 of 7 |
+| Wrong finished answers | **0** | 1 (rename-3: `report.py` still used the old name) |
+| Server faults (guard) | 0 in 36 | 0 reloads; 1 mid-trajectory fault (toposort-2) |
+
+- `deep` was stopped by `config/harnesses/watch-hard-deep.sh` when its 7th failure (semver-1, at
+  22 trajectories) put it past Inkling's 6 — it could no longer tie.
+- toposort-2 is counted as a **fault, not a wrong answer**: Hermes ended after 364s with
+  "Context length exceeded (720 tokens)" and no edit to the file; it is the only such trajectory
+  in either run. Excluding it does not change the outcome (17 vs 15).
+- A semver-2 row (35.1s) written as the run was killed was removed from `results.tsv`.
+- Per task (same trajectories, 1 = pass): calc 110 vs 100, csvparse 100 vs 010, rename 111 vs
+  110, toposort 111 vs 101, semver 0 vs 0; lru, intervals, ratelimit 111 for both.
+
+**Verdict (user's choice of the three options):** Inkling is the more reliable finisher; APEX is
+faster and closer on its misses. Both kept: Inkling IQ3_XXS added as `deep-inkling`, `deep`
+unchanged. Harnesses re-synced (`sync-harnesses.sh`); Hermes default set back to `fast`.

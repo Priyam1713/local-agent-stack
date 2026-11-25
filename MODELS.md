@@ -20,12 +20,17 @@ adding a feature-extension, a cross-function refactor, and a three-bug multi-ste
 Nemotron and APEX scored 15/15 on the old fixture and then separated cleanly on the new one.
 Every row below is tagged with the fixture that produced it.
 
-## Live in the stack (3 slots)
+**A third fixture, 2026-11-25: the hard fixture** (`12-task × 3-run`, 36 trajectories, 245
+hidden pytest cases copied in only after the harness exits; see the section below). Built when
+the 8-task fixture saturated — `fast`, `deep-tiel` and Inkling 2 Mini all scored 24/24 there.
+
+## Live in the stack (4 slots)
 
 | Model | Fixture | All-three | Individual | Wall/success | Reasoning:content | Tool errors | Notes |
 |---|---|---:|---:|---:|---:|---:|---|
+| Inkling 2 Mini UD-IQ3_XXS (`deep-inkling`) *(Hermes, 2026-11-25)* | 8-task; **hard** | 8/8; — | 24/24; **30/36** | 102.1s; — | — | — | **Best finisher on the hard fixture.** On the 8-task fixture a tie at ~2× the incumbents' median (78.0s vs 37.9s `fast` / 35.5s `deep-tiel`), so first rejected on speed. On the hard fixture, where the user ruled timing out, it beat `deep` 17 vs 15 fully-correct on the same 21 trajectories and never finished with a wrong answer — all 6 of its failures were 900s cutoffs. Added *alongside* `deep`. Looped `inkling2_loop` architecture (26.2B / 3.4B active, ×3) needs `~/src/llamacpp-next`; its compute buffer, not its weights, sets the fit (`-ub 256 --n-cpu-moe 6`, 11,095 MiB, 41.6 tok/s). |
 | Tiel-Coder-35B-A3B MTP UD-Q3_K_XL (`deep-tiel`) | 8-task ×2 | 8/8, 8/8 | 24/24, 24/24 | 59.4s / 60.5s | 0.94:1 / 0.86:1 | 55 / 40 | Only model to complete the fixture with zero failures, on two independent passes. Best tool-error count and reasoning ratio recorded. Kept *alongside* APEX rather than replacing it — both passes ran the same 8 tasks, so what's proven is reproducibility, not breadth. |
-| Qwen3.6-35B-A3B APEX-Compact (`deep`) | 8-task | 7/8 | 23/24 | 52.29s | 1.32:1 | 55 | Fastest deep-class model per success; the reference challenger for everything tested after it. Beat Nemotron twice, then Qwen3-Coder, K2-MoVA, and CalibForge. |
+| Qwen3.6-35B-A3B APEX-Compact (`deep`) | 8-task | 7/8 | 23/24 | 52.29s | 1.32:1 | 55 | Fastest deep-class model per success; the reference challenger for everything tested after it. Beat Nemotron twice, then Qwen3-Coder, K2-MoVA, and CalibForge. Re-baselined through Hermes 2026-11-25: **23/24**, median 30.4s (guarded run; an earlier 11/24 was a llama-server fault, not the model). Hard fixture: 15/22 when stopped, behind Inkling on fully-correct trajectories but ahead on individual hidden tests (306 vs 270 of 337). |
 | Qwen3.5-9B Q6_K (`fast`) | 8-task | 6/8 | 22/24 | 48.37s | 2.54:1 | 90 | Fastest of anything in the stack; the baseline any small-model candidate has to clear. Both K2-Horizon 7B quants were measured against it and neither justified displacing it. |
 
 ## Rejected on the 8-task protocol
@@ -43,7 +48,18 @@ Every row below is tagged with the fixture that produced it.
 | Spark-X2.5-4B Q8_0 | 4/8 | 18/24 | 173.68s | 9.74:1 | 170 | Burns enormous reasoning on hard tasks (up to 879,802 characters on one failed `cache` run) and still frequently times out or barely clears the 400s limit. Required a mainline rebuild for its `spark2_5` architecture (merged upstream past this project's pinned commit — a real rebuild, not a third-party fork). |
 | granite-4.2-3b Q8_0 | 4/8 | 17/24 | 90.46s | 16.35:1 | 315 | Dense IBM Granite architecture. Several `success=1` rows carried massive reasoning (up to 266,641 chars) alongside zero narrated content — succeeding via tool calls alone isn't itself a problem, but outright failures on `overlay`/`cache`/`dedupe`/`pipeline` plus 315 tool errors make it a clear reject. |
 | Qwen3.8-27B-OBLITERATED-Mythos-Class-Agentic Q3_K_L *(Hermes)* | 0/8 | **1/24** | 98.5s (n=1) | — | — | **Degenerate output, not slowness.** Tuning was settled and healthy first — `-ngl 44` / `-c 32768` / 10,636 MiB / 8.27 tok/s — so the slot was not misconfigured. Then asked "17 plus 25", the model spent its entire reasoning budget emitting literal `/` characters: 300 of 300, 100% of the output, under llama.cpp defaults AND Qwen's pinned sampling, with and without a system message. At temperature 0.6 that is a collapsed distribution, not a formatting quirk. 22 of 24 trajectories hit the 500s timeout without producing an edit; the one pass came before the collapse, and a second early trajectory wrote `ALISES` for `ALIASES` and reported it as verified. Two compounding sources of damage are the likely explanation: an aggressive Q3_K_L quant on top of abliteration. |
+| Qwen3.8-27B UD3.1 UD-IQ4_XS *(Hermes, 2026-11-25; deleted)* | — | **2/10 clean** | — | — | — | **Too slow to finish.** unsloth's 2026-11-11 re-quant. Healthy smoke test and fit (`-ngl 44`, 10,539 MiB) but only 7.4 tok/s as a dense 27B; each turn is one multi-minute reasoning stream, and 7 of the 8 failures hit the 500s limit with no edit. The remaining 14 trajectories ran concurrently with another load and are excluded as contaminated; even all passing, the ceiling is 16/24. |
 | ai9stars_G9v3-3B Q8_0 | 3/8 | 17/24 | 191.35s | 9.78:1 | 284 | **Screen-lies reversal**, same class as gpt-oss's original one: 5/5 on the isolated screen at 16.5s/answer, then 3/8 with four separate 400-second timeouts across `alias`/`cache`/`pipeline` under the harder 8-task fixture. |
+
+## Hard fixture — 2026-11-25 (not comparable to the sections above)
+
+12 tasks × 3 runs through Hermes, 900s per trajectory (only to end stuck runs; timing is not the
+criterion). Hidden tests check every rule in each module's docstring.
+
+| Model | Trajectories | Same 21 trajectories | Hidden tests (same 21) | Wrong finished answers | Notes |
+|---|---:|---:|---:|---:|---|
+| Inkling 2 Mini UD-IQ3_XXS (`deep-inkling`) | **30/36** | **17** | 270/337 | **0** | Every failure a 900s cutoff, often with the code barely touched (semver 12/52, csvparse 4/13). |
+| Qwen3.6-35B-A3B APEX-Compact (`deep`) | 15/22 (stopped) | 15 | **306/337** | 1 | Stopped at 22 when its 7th failure passed Inkling's 6. Misses were near-misses (semver 51/52, csvparse 11/13); `rename-3` finished wrong. One trajectory (toposort-2) was a Hermes/server fault with no edits and is excluded. |
 
 ## Rejected on the 5-task protocol (not comparable to the section above)
 
@@ -72,6 +88,7 @@ Every row below is tagged with the fixture that produced it.
 | Ornith-1.5-35B-A3B | ~21.7 GiB | 0/3 on a fair retest | Self-reported SWE-bench 79 / Terminal-Bench 67.8 with no third-party reproduction. Delivered zero usable content three separate times at 8,192 tokens. |
 | Qwen3.6-27B Q4_K_M | 18.08 GiB | Deleted untested | Dense, above the residency cliff, in a class where every dense model tested had already lost on wall-clock. |
 | Sarvam-30B Q4_K_M | 18.24 GiB | Cannot load | Architecture unsupported by llama.cpp — rejected before comparison was possible. |
+| Inkling 2 Mini UD-Q4_K_XL *(deleted 2026-11-25)* | 17.63 GB | Fit sweep only (2026-11-25) | Cannot fit. The looped architecture's compute buffer stays 3.9-7.2 GB even at `-ub 64`, so llama.cpp claims 14.0-15.2 GB against 12.2 GB physical and spills to shared memory: 18-23 tok/s decode and 51-127 tok/s prompt, against IQ3's 41.6 / 500. It would lose to IQ3, which already lost on speed, so the protocol was not run. |
 
 ## What's still on disk, unused
 
@@ -87,5 +104,15 @@ Every row below is tagged with the fixture that produced it.
 - **`--n-cpu-moe`** (llama.cpp): offloads routed MoE experts to system RAM. Only applies to
   genuine MoE architectures, not dense models. The right value is architecture- and
   quant-specific and does not transfer between models — it must be swept per model.
-- **360 trajectories** run through the 8-task protocol across 15 protocol runs, as of the
-  last update to this file.
+- **432 trajectories** run through the 8-task protocol across 18 full protocol runs (24 of them
+  the `deep` run invalidated by a llama-server fault), plus 10 clean trajectories from one run
+  stopped early (Qwen3.8 UD3.1), as of 2026-11-25.
+- **58 hard-fixture trajectories**: Inkling 36 (complete), `deep` 22 (stopped early once it
+  could no longer tie). Hard-fixture scores are not comparable to 8-task scores.
+- **Server fault to know about:** the pinned llama.cpp server can degenerate mid-session into
+  emitting only `/` (Hermes then reports "Context length exceeded"). A reload fixes it.
+  `config/harnesses/slot-guard.sh` probes and reloads before each trajectory. The 2026-09-10
+  Mythos rejection recorded the same `/` symptom; it may have been this fault.
+- **Looped architectures** (Inkling 2): the compute buffer, sized by `-ub`, is the binding
+  constraint. llama.cpp grows it to fill free VRAM, so nvidia-smi reads constant across
+  `--n-cpu-moe` values; read `common_memory_breakdown_print` to see a spill.
