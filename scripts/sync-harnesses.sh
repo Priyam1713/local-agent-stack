@@ -15,7 +15,9 @@ set -uo pipefail
 SWAP_CONFIG=/mnt/d/LocalAI/config/llama-swap.yaml
 ENDPOINT="http://127.0.0.1:8080/v1"
 CTX=65536      # fallback only; the real value is read per slot from llama-swap.yaml
-MAXTOK=8192
+# Output cap per slot = its context / 4 (16384 on a 64k slot). It was a flat 8192, and reasoning
+# counts against it: on 2026-11-26 OpenClaw on `deep` spent the whole 8192 thinking about a
+# one-file web page and stopped (stopReason=length) before its write tool call.
 
 # --- discover live slots from the source of truth -------------------------------------
 SLOTS=$(grep -E "^  [a-z][a-z0-9-]*:" "$SWAP_CONFIG" | sed 's/://; s/^  //')
@@ -77,7 +79,7 @@ if [ -d "$PA_DIR" ]; then
       printf '          "reasoning": true,\n'
       printf '          "input": ["text"],\n'
       printf '          "contextWindow": %s,\n' "$ctx"
-      printf '          "maxTokens": %s,\n' "$MAXTOK"
+      printf '          "maxTokens": %s,\n' "$((ctx / 4))"
       printf '          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }\n'
       printf '        }'
     done
@@ -114,7 +116,7 @@ if [ -d /home/priya/.openclaw ]; then
       printf '            "reasoning": true,\n'
       printf '            "input": ["text"],\n'
       printf '            "contextWindow": %s,\n' "$ctx"
-      printf '            "maxTokens": %s\n' "$MAXTOK"
+      printf '            "maxTokens": %s\n' "$((ctx / 4))"
       printf '          }'
     done
     printf '\n        ]\n      }\n    }\n  }\n}\n'
@@ -167,6 +169,32 @@ if [ -f "$HERMES" ]; then
   sed -i "s|^  base_url: .*|  base_url: \"$ENDPOINT\"|" "$HERMES"
   awk '/^model:/{f=1} f&&/^[a-z_]+:/&&!/^model:/{exit} f' "$HERMES" \
     | grep -vE '^\s*#|^\s*$' | sed 's/^/  /' | head -6
+  # Per-slot context windows. llama-swap's /v1/models does not report one, so Hermes fell back
+  # to 256,000 tokens for every slot (1,048,576 for deep-inkling): it never compressed in time,
+  # overflowed the server's real 32k window and died with "Context length exceeded ... Cannot
+  # compress further" (2026-11-26). This managed block is rewritten on every sync.
+  BEGIN_MARK="# >>> llama-swap slots (managed by sync-harnesses.sh) >>>"
+  END_MARK="# <<< llama-swap slots <<<"
+  if grep -qE '^custom_providers:' "$HERMES" && ! grep -qF "$BEGIN_MARK" "$HERMES"; then
+    echo "FAILED: $HERMES already has its own custom_providers; merge the slot windows by hand"
+  else
+    awk -v b="$BEGIN_MARK" -v e="$END_MARK" '$0==b{skip=1} !skip{print} $0==e{skip=0}' "$HERMES" > "$HERMES.tmp"
+    {
+      echo "$BEGIN_MARK"
+      echo "custom_providers:"
+      echo "  - name: llama-swap"
+      echo "    base_url: \"$ENDPOINT\""
+      echo "    models:"
+      for s in $SLOTS; do
+        ctx=$(slot_ctx "$s"); [ -n "$ctx" ] || ctx=$CTX
+        echo "      $s:"
+        echo "        context_length: $ctx"
+      done
+      echo "$END_MARK"
+    } >> "$HERMES.tmp"
+    mv "$HERMES.tmp" "$HERMES"
+    echo "  hermes slot windows: $(for s in $SLOTS; do printf '%s=%s ' "$s" "$(slot_ctx "$s")"; done)"
+  fi
 else
   echo "hermes config absent, skipping"
 fi

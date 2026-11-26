@@ -59,6 +59,9 @@ models:
   # Promoted primary, 2026-09-04. Settled config: --n-cpu-moe 20 gives 9,848 MiB
   # peak VRAM (clean, ±0.13 tok/s in isolation) — the fastest clean fit found under
   # the 11,000 MiB ceiling. Do not re-tune without a reason; this was swept 18-32.
+  # ctx 32768 -> 65536 on 2026-11-26 (ctx-probe.sh): loaded 10,213 MiB, peak 10,273 MiB with a
+  # 62.5k-token prompt processed. Hybrid attention keeps the KV cost small. Agents doing research
+  # (fetching repos/CSVs) filled 32k and failed with context errors.
   deep:
     name: "Qwen3.6-35B-A3B APEX-Compact (deep)"
     ttl: 900
@@ -69,7 +72,7 @@ models:
       --model /mnt/d/LocalAI/models/qwen3.6-35b-a3b-apex/Qwen3.6-35B-A3B-APEX-Compact.gguf
       -ngl 99
       --n-cpu-moe 20
-      --ctx-size 32768
+      --ctx-size 65536
       --flash-attn on
       --cache-type-k q4_0
       --cache-type-v q4_0
@@ -107,6 +110,9 @@ models:
   # qwen35moe architecture, same as APEX, so the mainline validated binary serves it.
   # MTP nextn layers are embedded in this GGUF but deliberately NOT enabled: STACK.md
   # records MTP speculative decoding as do-not-retry on this machine.
+  # ctx 32768 -> 65536 on 2026-11-26 (ctx-probe.sh): loaded 10,743 MiB, peak 10,803 MiB with a
+  # 62.6k-token prompt processed (863 tok/s prefill). Hermes had failed a research-heavy task with
+  # "Context length exceeded" at 32k.
   deep-tiel:
     name: "Tiel-Coder-35B-A3B MTP UD-Q3_K_XL (deep-tiel)"
     ttl: 900
@@ -117,7 +123,7 @@ models:
       --model /mnt/d/LocalAI/models/tiel-coder-35b-a3b/Tiel-Coder-35B-A3B-MTP-UD-Q3_K_XL.gguf
       -ngl 99
       --n-cpu-moe 18
-      --ctx-size 32768
+      --ctx-size 65536
       --flash-attn on
       --cache-type-k q4_0
       --cache-type-v q4_0
@@ -165,6 +171,8 @@ models:
   # BOTH. Inkling is ~2.5x slower (8-task median 78.0s vs 30.4s) and needs ~/src/llamacpp-next
   # (bb692ef, arch inkling2_loop) -- the mainline pinned build cannot load it.
   # Fit (settled in round 1): -ub 256 --n-cpu-moe 6 -np 1 --fit off --load-mode none.
+  # Context stays 32768: probed 2026-11-26, 32k loads at 11,095 MiB but 48k and 64k both load at
+  # 11,875 MiB (~350 MiB short of full on a 12 GB card), too close to spill. Keep its tasks lean.
   deep-inkling:
     name: "Inkling 2 Mini UD-IQ3_XXS (deep-inkling)"
     ttl: 900

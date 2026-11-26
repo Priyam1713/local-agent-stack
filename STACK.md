@@ -1562,3 +1562,22 @@ end stuck runs. Runner: `config/harnesses/run-h2h-hard.sh <slot>`; results in
 **Verdict (user's choice of the three options):** Inkling is the more reliable finisher; APEX is
 faster and closer on its misses. Both kept: Inkling IQ3_XXS added as `deep-inkling`, `deep`
 unchanged. Harnesses re-synced (`sync-harnesses.sh`); Hermes default set back to `fast`.
+
+## Context windows and harness limits — 2026-11-26
+
+`deep` and `deep-tiel` went from 32k to 64k after a research-heavy
+studio prompt (a one-page site "following" a GitHub repo) failed on every deep slot and harness:
+agents fetched the repo's CSVs into context and overflowed 32k. Measured with
+`config/ctx-probe.sh` (real 62.5k-token prompt): deep peak 10,273 MiB, deep-tiel 10,803 MiB, both
+under the 11,000 ceiling. `deep-inkling` stays 32k: 48k and 64k both load at 11,875 MiB. Three
+harness-side causes were fixed in the same pass (the first two in `sync-harnesses.sh`):
+- **Hermes assumed 256,000 tokens** for every slot (1,048,576 for deep-inkling) because llama-swap's
+  `/v1/models` reports no window; it never compressed in time and died with "Context length
+  exceeded (120 tokens). Cannot compress further." The sync now writes a managed
+  `custom_providers` block into `~/.hermes/config.yaml` with each slot's real window.
+- **Output cap** was a flat 8192 for Prime and OpenClaw; reasoning counts against it, so OpenClaw on
+  `deep` stopped with `stopReason=length` before its write call. Now ctx/4 per slot (16384 on 64k).
+- The studio surfaces Prime's swallowed model errors and allows 30 min per run (was 15).
+
+Verified: `verify-harnesses.sh` 4/4, then the same prompt through the studio on Hermes + deep-tiel
+finished in 13.8 min with a 22.8 KB `index.html` (it had died with the context error before).
